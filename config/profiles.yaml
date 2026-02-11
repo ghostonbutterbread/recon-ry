@@ -1,0 +1,40 @@
+# Profile definitions
+# Each profile specifies which stages to run
+
+profiles:
+  full:
+    description: "Full reconnaissance scan"
+    stages:
+      - subdomain_enum
+      - url_discovery
+      - alive_check
+      - param_discovery
+      - dir_enum
+      - secret_scan
+
+  subs:
+    description: "Subdomain enumeration only"
+    stages:
+      - subdomain_enum
+
+  secrets:
+    description: "Secret scanning on existing data"
+    stages:
+      - secret_scan
+
+  dork:
+    description: "Google dorking"
+    stages:
+      - dork
+
+  fast:
+    description: "Quick scan (subdomain + alive check)"
+    stages:
+      - subdomain_enum
+      - alive_check
+
+  urls:
+    description: "URL discovery and alive check (requires wild.txt)"
+    stages:
+      - url_discovery
+      - alive_check

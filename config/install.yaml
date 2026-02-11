@@ -1,0 +1,131 @@
+# Tool installation configuration
+# Tool types:
+#   - binary: Requires installation (go install, pip, etc.)
+#   - inline: Built-in command (curl, jq, etc.) - no installation needed
+#   - script: Custom script at specific path
+
+tools:
+  # Inline commands (no installation needed)
+  crt_sh:
+    install_method: inline
+    install_command: "# Uses curl and jq - no installation needed"
+    binary_name: crt_sh
+    dependencies: [curl, jq]
+
+  dork_scan:
+    install_method: inline
+    install_command: "# Built-in command - no installation needed"
+    binary_name: dork_scan
+
+  # Binary tools (require installation)
+
+  subfinder:
+    install_method: go
+    install_command: "go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest"
+    update_check: "github:projectdiscovery/subfinder"
+    binary_name: subfinder
+
+  httpx:
+    install_method: go
+    install_command: "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest"
+    update_check: "github:projectdiscovery/httpx"
+    binary_name: httpx
+
+  katana:
+    install_method: go
+    install_command: "go install github.com/projectdiscovery/katana/cmd/katana@latest"
+    update_check: "github:projectdiscovery/katana"
+    binary_name: katana
+
+  nuclei:
+    install_method: go
+    install_command: "go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest"
+    update_check: "github:projectdiscovery/nuclei"
+    binary_name: nuclei
+
+  assetfinder:
+    install_method: go
+    install_command: "go install github.com/tomnomnom/assetfinder@latest"
+    update_check: "github:tomnomnom/assetfinder"
+    binary_name: assetfinder
+
+  amass:
+    install_method: go
+    install_command: "go install -v github.com/owasp-amass/amass/v4/...@master"
+    update_check: "github:owasp-amass/amass"
+    binary_name: amass
+
+  waybackurls:
+    install_method: go
+    install_command: "go install github.com/tomnomnom/waybackurls@latest"
+    update_check: "github:tomnomnom/waybackurls"
+    binary_name: waybackurls
+
+  gau:
+    install_method: go
+    install_command: "go install github.com/lc/gau/v2/cmd/gau@latest"
+    update_check: "github:lc/gau"
+    binary_name: gau
+
+  hakrawler:
+    install_method: go
+    install_command: "go install github.com/hakluke/hakrawler@latest"
+    update_check: "github:hakluke/hakrawler"
+    binary_name: hakrawler
+
+  uro:
+    install_method: pip
+    install_command: "pip3 install uro"
+    update_check: "pypi:uro"
+    binary_name: uro
+
+  ffuf:
+    install_method: go
+    install_command: "go install github.com/ffuf/ffuf/v2@latest"
+    update_check: "github:ffuf/ffuf"
+    binary_name: ffuf
+
+  dirsearch:
+    install_method: git
+    install_command: "git clone https://github.com/maurosoria/dirsearch.git ~/tools/dirsearch"
+    update_check: "github:maurosoria/dirsearch"
+    binary_name: dirsearch
+    binary_path: "~/tools/dirsearch/dirsearch.py"
+
+  trufflehog:
+    install_method: go
+    install_command: "go install github.com/trufflesecurity/trufflehog/v3@latest"
+    update_check: "github:trufflesecurity/trufflehog"
+    binary_name: trufflehog
+
+  anew:
+    install_method: go
+    install_command: "go install github.com/tomnomnom/anew@latest"
+    update_check: "github:tomnomnom/anew"
+    binary_name: anew
+
+# System dependencies
+dependencies:
+  - name: curl
+    check_command: "which curl"
+    install_command: "sudo apt install -y curl"
+
+  - name: jq
+    check_command: "which jq"
+    install_command: "sudo apt install -y jq"
+
+  - name: git
+    check_command: "which git"
+    install_command: "sudo apt install -y git"
+
+  - name: go
+    check_command: "which go"
+    install_command: "sudo apt install -y golang-go"
+
+  - name: python3
+    check_command: "which python3"
+    install_command: "sudo apt install -y python3"
+
+  - name: pip3
+    check_command: "which pip3"
+    install_command: "sudo apt install -y python3-pip"

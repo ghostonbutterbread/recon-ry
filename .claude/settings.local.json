@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./main.sh:*)",
+      "Bash(wc:*)"
+    ]
+  }
+}
