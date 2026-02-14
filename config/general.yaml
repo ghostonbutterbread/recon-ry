@@ -61,7 +61,7 @@ stages:
     depends_on: [url_discovery]
     description: "Secret and sensitive data scanning"
     tools:
-      - nuclei_secrets
+      - nuclei
       - trufflehog
       - secret_finder
 
@@ -169,7 +169,7 @@ tools:
     outputs: [dirs.txt]
 
   # Secret Scanning
-  nuclei_secrets:
+  nuclei:
     type: binary
     command: "nuclei -list {{INPUT}} -t ~/nuclei-templates/exposures/ -silent -o {{OUTPUT}}"
     required_files: [urls.txt]

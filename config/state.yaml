@@ -14,7 +14,7 @@ tools:
   unclutter_jsfiles: true
   ffuf: true
   dirsearch: true
-  nuclei_secrets: true
+  nuclei: true
   trufflehog: false
   secret_finder: true
   dork_scan: true

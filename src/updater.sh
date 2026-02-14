@@ -169,21 +169,61 @@ check_tool_status() {
 
 # Install all missing tools
 install_missing_tools() {
-    log_info "Installing missing tools..."
+    log_info "Checking for missing tools..."
 
     local all_tools=$(get_all_tools)
+    local missing_tools=()
+
+    # First pass: collect all missing tools
+    for tool in $all_tools; do
+        if ! is_tool_installed "$tool"; then
+            missing_tools+=("$tool")
+        fi
+    done
+
+    # If no missing tools, return early
+    if [[ ${#missing_tools[@]} -eq 0 ]]; then
+        log_success "All tools are already installed!"
+        return 0
+    fi
+
+    # Display missing tools
+    echo ""
+    log_warning "Found ${#missing_tools[@]} missing tool(s):"
+    for tool in "${missing_tools[@]}"; do
+        echo "  - $tool"
+    done
+    echo ""
+
+    # Prompt user for confirmation
+    read -p "Would you like to install all missing tools? (y/n): " -n 1 -r
+    echo ""
+    echo ""
+
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Installation cancelled by user"
+        return 0
+    fi
+
+    # Second pass: install all missing tools
+    log_info "Installing ${#missing_tools[@]} missing tools..."
+    echo ""
     local installed=0
     local failed=0
 
-    for tool in $all_tools; do
-        if ! is_tool_installed "$tool"; then
-            if install_tool "$tool"; then
-                ((installed++))
-            else
-                ((failed++))
-            fi
+    # Temporarily disable exit on error to continue installing all tools
+    set +e
+
+    for tool in "${missing_tools[@]}"; do
+        if install_tool "$tool"; then
+            ((installed++))
+        else
+            ((failed++))
         fi
     done
+
+    # Re-enable exit on error
+    set -e
 
     echo ""
     log_info "Installation complete: $installed installed, $failed failed"
