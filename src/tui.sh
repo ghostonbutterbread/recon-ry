@@ -222,13 +222,8 @@ tui_set_stages() {
         if [[ $TUI_MODIFIED -eq 1 ]]; then
             log_info "Saving stage configuration..."
 
-            # Save changes
-            local i=0
-            for stage in $all_stages; do
-                local state="${TUI_STATES[$i]}"
-                update_stage_status "$stage" "$state"
-                ((i++))
-            done
+            # Save changes using batch update
+            batch_update_stage_status "${TUI_STATES[@]}"
 
             log_success "Stage configuration saved!"
 

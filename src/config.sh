@@ -6,6 +6,7 @@ CONFIG_DIR="$SCRIPT_DIR/config"
 GENERAL_CONFIG="$CONFIG_DIR/general.yaml"
 PROFILES_CONFIG="$CONFIG_DIR/profiles.yaml"
 INSTALL_CONFIG="$CONFIG_DIR/install.yaml"
+STATE_CONFIG="$CONFIG_DIR/state.yaml"
 
 # Associative arrays to store config
 declare -A STAGES
@@ -74,11 +75,65 @@ load_install_config() {
     INSTALL_CONFIG_JSON=$(parse_yaml "$INSTALL_CONFIG")
 }
 
+# Load state config
+load_state_config() {
+    log_debug "Loading state config from $STATE_CONFIG"
+
+    # Create state file if it doesn't exist
+    if [[ ! -f "$STATE_CONFIG" ]]; then
+        log_warning "State config not found, creating default state.yaml"
+        create_default_state_config
+    fi
+
+    STATE_CONFIG_JSON=$(parse_yaml "$STATE_CONFIG")
+}
+
+# Create default state config
+create_default_state_config() {
+    cat > "$STATE_CONFIG" << 'EOF'
+# Tool and Stage State Configuration
+# This file tracks which tools and stages are enabled/disabled
+
+# Tool enabled/disabled state
+tools:
+  subfinder: true
+  crt_sh: true
+  assetfinder: true
+  amass: true
+  katana: true
+  hakrawler: true
+  waybackurls: true
+  gau: true
+  httpx: true
+  gau_params: true
+  uro: true
+  js_files: true
+  unclutter_jsfiles: true
+  ffuf: true
+  dirsearch: true
+  nuclei_secrets: true
+  trufflehog: true
+  secret_finder: true
+  dork_scan: true
+
+# Stage enabled/disabled state
+stages:
+  subdomain_enum: true
+  url_discovery: true
+  alive_check: true
+  param_discovery: true
+  dir_enum: true
+  secret_scan: true
+  dork: true
+EOF
+}
+
 # Load all configs
 load_all_configs() {
     load_general_config
     load_profiles_config
     load_install_config
+    load_state_config
 }
 
 # Get profile stages
@@ -146,17 +201,31 @@ print(value)
 "
 }
 
-# Check if tool is enabled
+# Check if tool is enabled (from state.yaml)
 is_tool_enabled() {
     local tool="$1"
-    local enabled=$(get_tool_info "$tool" "enabled")
+    local enabled=$(echo "$STATE_CONFIG_JSON" | python3 -c "
+import sys
+import json
+data = json.load(sys.stdin)
+tools = data.get('tools', {})
+enabled = tools.get('$tool', True)
+print('true' if enabled else 'false')
+")
     [[ "$enabled" == "true" ]]
 }
 
-# Check if stage is enabled
+# Check if stage is enabled (from state.yaml)
 is_stage_enabled() {
     local stage="$1"
-    local enabled=$(get_stage_info "$stage" "enabled")
+    local enabled=$(echo "$STATE_CONFIG_JSON" | python3 -c "
+import sys
+import json
+data = json.load(sys.stdin)
+stages = data.get('stages', {})
+enabled = stages.get('$stage', True)
+print('true' if enabled else 'false')
+")
     [[ "$enabled" == "true" ]]
 }
 
@@ -182,49 +251,83 @@ print(' '.join(stages))
 "
 }
 
-# Update tool enabled status
+# Update tool enabled status (writes to state.yaml)
 update_tool_status() {
     local tool="$1"
     local enabled="$2"
 
-    # Use python to update the YAML file
+    # Use python to update the state.yaml file
     python3 << EOF
 import yaml
+import sys
 
-with open('$GENERAL_CONFIG', 'r') as f:
-    config = yaml.safe_load(f)
+try:
+    with open('$STATE_CONFIG', 'r') as f:
+        config = yaml.safe_load(f)
 
-if 'tools' in config and '$tool' in config['tools']:
-    config['tools']['$tool']['enabled'] = $enabled
+    if config is None:
+        config = {}
+    if 'tools' not in config:
+        config['tools'] = {}
 
-with open('$GENERAL_CONFIG', 'w') as f:
-    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    # Convert string "true"/"false" to Python boolean
+    config['tools']['$tool'] = True if '$enabled' == 'true' else False
+
+    with open('$STATE_CONFIG', 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+except Exception as e:
+    print(f"Error updating tool '{tool}': {e}", file=sys.stderr)
+    sys.exit(1)
 EOF
 
-    # Reload config
-    load_general_config
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "Failed to update tool $tool"
+        return 1
+    fi
+
+    # Reload state config
+    load_state_config
 }
 
-# Update stage enabled status
+# Update stage enabled status (writes to state.yaml)
 update_stage_status() {
     local stage="$1"
     local enabled="$2"
 
     python3 << EOF
 import yaml
+import sys
 
-with open('$GENERAL_CONFIG', 'r') as f:
-    config = yaml.safe_load(f)
+try:
+    with open('$STATE_CONFIG', 'r') as f:
+        config = yaml.safe_load(f)
 
-if 'stages' in config and '$stage' in config['stages']:
-    config['stages']['$stage']['enabled'] = $enabled
+    if config is None:
+        config = {}
+    if 'stages' not in config:
+        config['stages'] = {}
 
-with open('$GENERAL_CONFIG', 'w') as f:
-    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    # Convert string "true"/"false" to Python boolean
+    config['stages']['$stage'] = True if '$enabled' == 'true' else False
+
+    with open('$STATE_CONFIG', 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+except Exception as e:
+    print(f"Error updating stage '{stage}': {e}", file=sys.stderr)
+    sys.exit(1)
 EOF
 
-    # Reload config
-    load_general_config
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "Failed to update stage $stage"
+        return 1
+    fi
+
+    # Reload state config
+    load_state_config
 }
 
 # Update stage parallel status
@@ -239,7 +342,8 @@ with open('$GENERAL_CONFIG', 'r') as f:
     config = yaml.safe_load(f)
 
 if 'stages' in config and '$stage' in config['stages']:
-    config['stages']['$stage']['parallel'] = $parallel
+    # Convert string "true"/"false" to Python boolean
+    config['stages']['$stage']['parallel'] = True if '$parallel' == 'true' else False
 
 with open('$GENERAL_CONFIG', 'w') as f:
     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
@@ -247,4 +351,59 @@ EOF
 
     # Reload config
     load_general_config
+}
+
+# Batch update all stage statuses at once (more efficient)
+batch_update_stage_status() {
+    # Build a space-separated list of stage:state pairs
+    local updates=""
+    local all_stages=$(get_all_stages)
+
+    for stage in $all_stages; do
+        local state="$1"
+        if [[ -z "$state" ]]; then
+            log_error "Missing state for stage $stage"
+            return 1
+        fi
+        shift
+        updates="$updates $stage:$state"
+    done
+
+    python3 << EOF
+import yaml
+import sys
+
+try:
+    with open('$STATE_CONFIG', 'r') as f:
+        config = yaml.safe_load(f)
+
+    if config is None:
+        config = {}
+    if 'stages' not in config:
+        config['stages'] = {}
+
+    # Parse and update all stages
+    updates = '$updates'.strip().split()
+
+    for update in updates:
+        if ':' in update:
+            stage, state = update.split(':', 1)
+            config['stages'][stage] = True if state == 'true' else False
+
+    with open('$STATE_CONFIG', 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+except Exception as e:
+    print(f'Error updating stages: {e}', file=sys.stderr)
+    sys.exit(1)
+EOF
+
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "Failed to update stages"
+        return 1
+    fi
+
+    # Reload state config
+    load_state_config
 }

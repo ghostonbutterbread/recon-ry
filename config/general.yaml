@@ -1,4 +1,8 @@
 # General configuration for recon framework
+#
+# NOTE: Tool and stage enabled/disabled status is managed in state.yaml
+# This file defines tool commands, configurations, and stage dependencies.
+# To enable/disable tools or stages, use the TUI or edit state.yaml directly.
 
 # Default settings
 defaults:
@@ -9,7 +13,6 @@ defaults:
 # Stage configuration
 stages:
   subdomain_enum:
-    enabled: true
     parallel: true
     description: "Subdomain enumeration"
     tools:
@@ -19,7 +22,6 @@ stages:
       - amass
 
   url_discovery:
-    enabled: true
     parallel: false
     depends_on: [subdomain_enum]
     description: "URL discovery and crawling"
@@ -30,7 +32,6 @@ stages:
       - gau
 
   alive_check:
-    enabled: true
     parallel: false
     depends_on: [url_discovery]
     description: "Check alive hosts and services"
@@ -38,7 +39,6 @@ stages:
       - httpx
 
   param_discovery:
-    enabled: true
     parallel: false
     depends_on: [alive_check]
     description: "Parameter discovery"
@@ -49,7 +49,6 @@ stages:
       - unclutter_jsfiles
 
   dir_enum:
-    enabled: true
     parallel: true
     depends_on: [alive_check]
     description: "Directory enumeration"
@@ -58,7 +57,6 @@ stages:
       - dirsearch
 
   secret_scan:
-    enabled: true
     parallel: false
     depends_on: [url_discovery]
     description: "Secret and sensitive data scanning"
@@ -68,7 +66,6 @@ stages:
       - secret_finder
 
   dork:
-    enabled: true
     parallel: false
     description: "Google dorking"
     tools:
@@ -78,28 +75,24 @@ stages:
 tools:
   # Subdomain Enumeration
   subfinder:
-    enabled: true
     type: binary  # Requires binary installation
     command: "subfinder -d {{DOMAIN}} -all -silent -o {{OUTPUT}}"
     required_files: []
     outputs: [wild.txt]
 
   crt_sh:
-    enabled: true
     type: inline  # Not a binary, just a command
     command: "curl -s 'https://crt.sh/?q=%25.{{DOMAIN}}&output=json' | jq -r '.[].name_value' | sed 's/*.//g' | sort -u"
     required_files: []
     outputs: [wild.txt]
 
   assetfinder:
-    enabled: true
     type: binary
     command: "assetfinder --subs-only {{DOMAIN}}"
     required_files: []
     outputs: [wild.txt]
 
   amass:
-    enabled: true
     type: binary
     command: "amass enum -passive -d {{DOMAIN}} -silent"
     required_files: []
@@ -107,28 +100,24 @@ tools:
 
   # URL Discovery
   katana:
-    enabled: true
     type: binary
     command: "katana -list {{INPUT}} -d 3 -silent -jc -kf all -o {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
 
   hakrawler:
-    enabled: true
     type: binary
     command: "cat {{INPUT}} | hakrawler -d 3 -plain > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
 
   waybackurls:
-    enabled: true
     type: binary
     command: "cat {{INPUT}} | waybackurls > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
 
   gau:
-    enabled: true
     type: binary
     command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
     required_files: [wild.txt]
@@ -136,7 +125,6 @@ tools:
 
   # Alive Check
   httpx:
-    enabled: true
     type: binary
     command: "httpx -list {{INPUT}} -silent -mc 200,201,202,203,204,301,302,307,308,401,403,405 -o {{OUTPUT}}"
     required_files: [urls.txt]
@@ -144,28 +132,24 @@ tools:
 
   # Parameter Discovery
   gau_params:
-    enabled: true
     type: inline # gau normal run will check install
-    command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf | grep '=' > {{OUTPUT}}"
+    command: "cat {{INPUT}} | gau --threads 5 > {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [params_raw.txt]
 
   uro:
-    enabled: true
     type: binary
     command: "cat {{INPUT}} | uro -o {{OUTPUT}}"
     required_files: [params_raw.txt]
     outputs: [params.txt]
 
   js_files:
-    enabled: true
     type: inline
     command: "cat {{INPUT}} | grep '.js$' > {{OUTPUT}}"
     required_files: [params.txt]
     outputs: [jsfiles.txt]
 
   unclutter_jsfiles:
-    enabled: true
     type: inline
     command: "cat {{INPUT}} | uro | anew {{OUTPUT}}"
     required_files: [jsfiles.txt]
@@ -173,14 +157,12 @@ tools:
 
   # Directory Enumeration
   ffuf:
-    enabled: true
     type: binary
     command: "ffuf -u {{URL}}/FUZZ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -mc 200,204,301,302,307,401,403 -o {{OUTPUT}} -of json"
     required_files: [alive.txt]
     outputs: [dirs.txt]
 
   dirsearch:
-    enabled: true
     type: binary
     command: "dirsearch -u {{URL}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --plain-text-report={{OUTPUT}}"
     required_files: [alive.txt]
@@ -188,21 +170,18 @@ tools:
 
   # Secret Scanning
   nuclei_secrets:
-    enabled: true
     type: binary
     command: "nuclei -list {{INPUT}} -t ~/nuclei-templates/exposures/ -silent -o {{OUTPUT}}"
     required_files: [urls.txt]
     outputs: [secrets.txt]
 
   trufflehog:
-    enabled: true
     type: binary
     command: "trufflehog filesystem {{PROJECT_DIR}} --json --no-update"
     required_files: []
     outputs: [secrets.txt]
 
   secret_finder:
-    enabled: true
     type: script
     command: "cat {{INPUT}} | while read url; do python3 {{SECRETFINDER_DIR}}/SecretFinder.py -i \"$url\" -o cli >> {{OUTPUT}}; done"
     required_files: [jsfiles.txt]
@@ -210,7 +189,6 @@ tools:
 
   # Google Dorking
   dork_scan:
-    enabled: true
     type: inline
     command: "echo 'Manual dorking for: site:{{DOMAIN}} inurl:admin OR inurl:login OR inurl:api'"
     required_files: []
