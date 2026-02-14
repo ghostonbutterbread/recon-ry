@@ -17,6 +17,24 @@ tools:
     install_command: "# Built-in command - no installation needed"
     binary_name: dork_scan
 
+  gau_params:
+    install_method: inline
+    install_command: "# Uses gau binary - no separate installation needed"
+    binary_name: gau
+    dependencies: [gau]
+
+  js_files:
+    install_method: inline
+    install_command: "# Uses grep - no installation needed"
+    binary_name: grep
+    dependencies: [grep]
+
+  unclutter_jsfiles:
+    install_method: inline
+    install_command: "# Uses uro and anew - no installation needed"
+    binary_name: uro
+    dependencies: [uro, anew]
+
   # Binary tools (require installation)
 
   subfinder:
@@ -97,6 +115,13 @@ tools:
     install_command: "go install github.com/trufflesecurity/trufflehog/v3@latest"
     update_check: "github:trufflesecurity/trufflehog"
     binary_name: trufflehog
+
+  secret_finder:
+    install_method: git
+    install_command: "git clone https://github.com/m4ll0k/SecretFinder.git ~/tools/SecretFinder && pip3 install -r ~/tools/SecretFinder/requirements.txt"
+    update_check: "github:m4ll0k/SecretFinder"
+    binary_name: SecretFinder.py
+    binary_path: "~/tools/SecretFinder/SecretFinder.py"
 
   anew:
     install_method: go

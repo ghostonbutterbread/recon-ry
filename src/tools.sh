@@ -87,6 +87,7 @@ execute_tool() {
     command="${command//\{\{DOMAIN\}\}/$domain}"
     command="${command//\{\{URL\}\}/$url}"
     command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
+    command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$HOME/tools/SecretFinder}}"
 
     log_verbose "Running: $tool"
     log_debug "Command: $command"

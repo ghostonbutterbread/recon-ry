@@ -45,6 +45,8 @@ stages:
     tools:
       - gau_params
       - uro
+      - js_files
+      - unclutter_jsfiles
 
   dir_enum:
     enabled: true
@@ -63,6 +65,7 @@ stages:
     tools:
       - nuclei_secrets
       - trufflehog
+      - secret_finder
 
   dork:
     enabled: true
@@ -113,21 +116,21 @@ tools:
   hakrawler:
     enabled: true
     type: binary
-    command: "cat {{INPUT}} | hakrawler -d 3 -plain"
+    command: "cat {{INPUT}} | hakrawler -d 3 -plain > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
 
   waybackurls:
     enabled: true
     type: binary
-    command: "cat {{INPUT}} | waybackurls"
+    command: "cat {{INPUT}} | waybackurls > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
 
   gau:
     enabled: true
     type: binary
-    command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf"
+    command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
 
@@ -142,17 +145,31 @@ tools:
   # Parameter Discovery
   gau_params:
     enabled: true
-    type: binary
-    command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf | grep '=' "
+    type: inline # gau normal run will check install
+    command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf | grep '=' > {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [params_raw.txt]
 
   uro:
     enabled: true
     type: binary
-    command: "cat {{INPUT}} | uro"
+    command: "cat {{INPUT}} | uro -o {{OUTPUT}}"
     required_files: [params_raw.txt]
     outputs: [params.txt]
+
+  js_files:
+    enabled: true
+    type: inline
+    command: "cat {{INPUT}} | grep '.js$' > {{OUTPUT}}"
+    required_files: [params.txt]
+    outputs: [jsfiles.txt]
+
+  unclutter_jsfiles:
+    enabled: true
+    type: inline
+    command: "cat {{INPUT}} | uro | anew {{OUTPUT}}"
+    required_files: [jsfiles.txt]
+    outputs: [jsfiles.txt]
 
   # Directory Enumeration
   ffuf:
@@ -164,7 +181,7 @@ tools:
 
   dirsearch:
     enabled: true
-    type: script
+    type: binary
     command: "dirsearch -u {{URL}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --plain-text-report={{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [dirs.txt]
@@ -182,6 +199,13 @@ tools:
     type: binary
     command: "trufflehog filesystem {{PROJECT_DIR}} --json --no-update"
     required_files: []
+    outputs: [secrets.txt]
+
+  secret_finder:
+    enabled: true
+    type: script
+    command: "cat {{INPUT}} | while read url; do python3 {{SECRETFINDER_DIR}}/SecretFinder.py -i \"$url\" -o cli >> {{OUTPUT}}; done"
+    required_files: [jsfiles.txt]
     outputs: [secrets.txt]
 
   # Google Dorking

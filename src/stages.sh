@@ -53,6 +53,15 @@ execute_stage() {
         return 0
     fi
 
+    # Special check for subdomain_enum: skip if no URL/domain and no wild.txt
+    if [[ "$stage" == "subdomain_enum" ]]; then
+        if [[ -z "$domain" ]] && [[ ! -s "$project_dir/wild.txt" ]]; then
+            log_warning "Stage subdomain_enum skipped: no URL provided and wild.txt not found"
+            log_info "Subdomain enumeration requires either --url parameter or existing wild.txt"
+            return 0
+        fi
+    fi
+
     # Check dependencies
     if ! check_stage_dependencies "$stage" "$project_dir"; then
         log_warning "Stage $stage dependencies not met, skipping"
