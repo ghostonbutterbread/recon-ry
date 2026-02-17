@@ -251,6 +251,20 @@ print(' '.join(stages))
 "
 }
 
+# Get rate limit for a specific tool
+get_rate_limit() {
+    local tool="$1"
+    echo "$GENERAL_CONFIG_JSON" | python3 -c "
+import sys
+import json
+data = json.load(sys.stdin)
+rate_limits = data.get('rate_limits', {})
+default_rate = data.get('defaults', {}).get('rate_limit', 150)
+rate = rate_limits.get('$tool', default_rate)
+print(rate)
+"
+}
+
 # Update tool enabled status (writes to state.yaml)
 update_tool_status() {
     local tool="$1"

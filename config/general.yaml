@@ -9,6 +9,22 @@ defaults:
   timeout: 300  # Default timeout for tools in seconds
   threads: 50   # Default thread count for tools that support it
   retries: 3    # Number of retries for failed tools
+  rate_limit: 150 # Default rate limit in requests per second
+
+# Per-tool rate limiting (requests per second)
+# Applied to each tool's native rate limiting flag
+rate_limits:
+  subfinder: 150    # Subdomain enumeration rate
+  assetfinder: 150  # Asset discovery rate
+  amass: 100        # Amass enumeration rate (lower for heavier tool)
+  katana: 150       # Crawling rate
+  hakrawler: 150    # Crawling rate
+  waybackurls: 150  # API request rate
+  gau: 150          # Archive fetching rate
+  httpx: 150        # HTTP probing rate
+  nuclei: 150       # Vulnerability scanning rate
+  ffuf: 150         # Fuzzing rate
+  dirsearch: 150    # Directory brute-force rate
 
 # Stage configuration
 stages:
@@ -76,7 +92,7 @@ tools:
   # Subdomain Enumeration
   subfinder:
     type: binary  # Requires binary installation
-    command: "subfinder -d {{DOMAIN}} -all -silent -o {{OUTPUT}}"
+    command: "subfinder -d {{DOMAIN}} -all -silent -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
     required_files: []
     outputs: [wild.txt]
 
@@ -91,17 +107,18 @@ tools:
     command: "assetfinder --subs-only {{DOMAIN}}"
     required_files: []
     outputs: [wild.txt]
+    note: "assetfinder does not have native rate limiting"
 
   amass:
     type: binary
-    command: "amass enum -passive -d {{DOMAIN}} -silent"
+    command: "amass enum -passive -d {{DOMAIN}} -rf {{RATE_LIMIT}} -silent"
     required_files: []
     outputs: [wild.txt]
 
   # URL Discovery
   katana:
     type: binary
-    command: "katana -list {{INPUT}} -d 3 -silent -jc -kf all -o {{OUTPUT}}"
+    command: "katana -list {{INPUT}} -d 3 -silent -jc -kf all -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
 
@@ -110,23 +127,26 @@ tools:
     command: "cat {{INPUT}} | hakrawler -d 3 -plain > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
+    note: "hakrawler does not have native rate limiting"
 
   waybackurls:
     type: binary
     command: "cat {{INPUT}} | waybackurls > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
+    note: "waybackurls does not have native rate limiting"
 
   gau:
     type: binary
     command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
+    note: "gau does not have native rate limiting"
 
   # Alive Check
   httpx:
     type: binary
-    command: "httpx -list {{INPUT}} -silent -mc 200,201,202,203,204,301,302,307,308,401,403,405 -o {{OUTPUT}}"
+    command: "httpx -list {{INPUT}} -silent -mc 200,201,202,203,204,301,302,307,308,401,403,405 -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
     required_files: [urls.txt]
     outputs: [alive.txt]
 
@@ -136,6 +156,7 @@ tools:
     command: "cat {{INPUT}} | gau --threads 5 > {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [params_raw.txt]
+    note: "gau does not have native rate limiting"
 
   uro:
     type: binary
@@ -158,20 +179,20 @@ tools:
   # Directory Enumeration
   ffuf:
     type: binary
-    command: "ffuf -u {{URL}}/FUZZ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -mc 200,204,301,302,307,401,403 -o {{OUTPUT}} -of json"
+    command: "ffuf -u {{URL}}/FUZZ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} -o {{OUTPUT}} -of json"
     required_files: [alive.txt]
     outputs: [dirs.txt]
 
   dirsearch:
     type: binary
-    command: "dirsearch -u {{URL}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --plain-text-report={{OUTPUT}}"
+    command: "dirsearch -u {{URL}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --max-rate={{RATE_LIMIT}} --plain-text-report={{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [dirs.txt]
 
   # Secret Scanning
   nuclei:
     type: binary
-    command: "nuclei -list {{INPUT}} -t ~/nuclei-templates/exposures/ -silent -o {{OUTPUT}}"
+    command: "nuclei -list {{INPUT}} -t ~/nuclei-templates/exposures/ -silent -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
     required_files: [urls.txt]
     outputs: [secrets.txt]
 

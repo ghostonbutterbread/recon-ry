@@ -81,6 +81,9 @@ execute_tool() {
     # Get tool command
     local command=$(get_tool_info "$tool" "command")
 
+    # Get rate limit for this tool
+    local rate_limit=$(get_rate_limit "$tool")
+
     # Replace placeholders
     command="${command//\{\{INPUT\}\}/$input_file}"
     command="${command//\{\{OUTPUT\}\}/$output_file}"
@@ -88,6 +91,7 @@ execute_tool() {
     command="${command//\{\{URL\}\}/$url}"
     command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
     command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$HOME/tools/SecretFinder}}"
+    command="${command//\{\{RATE_LIMIT\}\}/$rate_limit}"
 
     log_verbose "Running: $tool"
     log_debug "Command: $command"
