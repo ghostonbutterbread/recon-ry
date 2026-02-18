@@ -2,9 +2,9 @@ tools:
   subfinder: true
   crt_sh: true
   assetfinder: true
-  amass: true
-  katana: true
-  hakrawler: true
+  amass: false
+  katana: false
+  hakrawler: false
   waybackurls: true
   gau: true
   httpx: true

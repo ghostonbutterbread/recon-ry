@@ -118,16 +118,23 @@ tools:
 
   secret_finder:
     install_method: git
-    install_command: "git clone https://github.com/m4ll0k/SecretFinder.git ~/tools/SecretFinder && pip3 install -r ~/tools/SecretFinder/requirements.txt"
+    install_command: "git clone https://github.com/m4ll0k/SecretFinder.git $SCRIPT_DIR/scripts/SecretFinder && pip3 install -r $SCRIPT_DIR/scripts/SecretFinder/requirements.txt"
     update_check: "github:m4ll0k/SecretFinder"
     binary_name: SecretFinder.py
-    binary_path: "~/tools/SecretFinder/SecretFinder.py"
+    binary_path: "scripts/SecretFinder/SecretFinder.py"
 
   anew:
     install_method: go
     install_command: "go install github.com/tomnomnom/anew@latest"
     update_check: "github:tomnomnom/anew"
     binary_name: anew
+
+# External wordlist repositories (cloned into the repo's wordlists/ dir)
+wordlists:
+  one_list_for_all:
+    source: "https://github.com/six2dez/OneListForAll"
+    path: "wordlists/OneListForAll"
+    description: "Comprehensive wordlist collection for directory and parameter fuzzing"
 
 # System dependencies
 dependencies:

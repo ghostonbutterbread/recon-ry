@@ -102,6 +102,10 @@ update_tool() {
         git)
             local binary_path=$(get_install_info "$tool" "binary_path")
             binary_path="${binary_path/#\~/$HOME}"
+            # Resolve relative paths against SCRIPT_DIR
+            if [[ -n "$binary_path" && "$binary_path" != /* ]]; then
+                binary_path="$SCRIPT_DIR/$binary_path"
+            fi
             local repo_dir=$(dirname "$binary_path")
             if [[ -d "$repo_dir/.git" ]]; then
                 log_verbose "Pulling latest changes for $tool"
@@ -292,6 +296,54 @@ for d in deps:
     fi
 }
 
+# Update (or install) wordlist git repositories
+update_wordlists() {
+    log_info "Updating wordlist repositories..."
+
+    local names
+    names=$(echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for name in data.get('wordlists', {}).keys():
+    print(name)
+")
+
+    if [[ -z "$names" ]]; then
+        log_verbose "No wordlist repositories configured"
+        return 0
+    fi
+
+    for name in $names; do
+        local source path full_path
+        source=$(echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data.get('wordlists', {}).get('$name', {}).get('source', ''))")
+        path=$(echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data.get('wordlists', {}).get('$name', {}).get('path', ''))")
+        full_path="$SCRIPT_DIR/$path"
+
+        if [[ -d "$full_path/.git" ]]; then
+            log_info "Updating wordlist $name..."
+            if (cd "$full_path" && git pull); then
+                log_success "Wordlist $name updated"
+            else
+                log_error "Failed to update wordlist $name"
+            fi
+        else
+            log_info "Installing wordlist $name from $source..."
+            mkdir -p "$(dirname "$full_path")"
+            if git clone "$source" "$full_path"; then
+                log_success "Wordlist $name installed"
+            else
+                log_error "Failed to install wordlist $name"
+            fi
+        fi
+    done
+}
+
 # Main update function
 run_update() {
     log_info "Running update module..."
@@ -307,6 +359,10 @@ run_update() {
 
     # Update existing tools
     update_all_tools
+    echo ""
+
+    # Update wordlist repositories
+    update_wordlists
     echo ""
 
     log_success "Update complete!"

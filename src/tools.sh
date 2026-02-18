@@ -95,7 +95,7 @@ execute_tool() {
     command="${command//\{\{URL\}\}/$url}"
     command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
     command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
-    command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$HOME/tools/SecretFinder}}"
+    command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/scripts/SecretFinder}}"
     command="${command//\{\{RATE_LIMIT\}\}/$rate_limit}"
 
     log_verbose "Running: $tool"
