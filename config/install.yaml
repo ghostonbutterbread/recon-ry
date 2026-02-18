@@ -5,12 +5,12 @@
 #   - script: Custom script at specific path
 
 tools:
-  # Inline commands (no installation needed)
+  # Script-based tools
   crt_sh:
-    install_method: inline
-    install_command: "# Uses curl and jq - no installation needed"
-    binary_name: crt_sh
-    dependencies: [curl, jq]
+    install_method: script
+    install_command: "# Bundled script - no installation needed"
+    binary_path: "scripts/crt_sh.sh"
+    dependencies: [curl, jq, anew]
 
   dork_scan:
     install_method: inline

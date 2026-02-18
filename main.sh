@@ -21,6 +21,7 @@ PROJECT_DIR=""
 URL=""
 PROFILE="full"
 COMMAND=""
+TOOL_TIMEOUT=""  # empty = use config default; 0 = no timeout
 
 # General usage information
 show_usage() {
@@ -65,6 +66,7 @@ Options:
     --dork              Google dorking only
     --project <dir>     Project directory path (required for saving results)
     --url <url>         Target URL/domain to scan
+    --timeout <secs>    Kill each tool after this many seconds (0 = no timeout, omit = config default)
     -v                  Verbose output (show tool names)
     -vv                 Very verbose (show full tool output)
     --dry-run           Show what would be executed without running
@@ -363,6 +365,10 @@ parse_args() {
                 ;;
             --url)
                 URL="$2"
+                shift 2
+                ;;
+            --timeout)
+                TOOL_TIMEOUT="$2"
                 shift 2
                 ;;
             -v)

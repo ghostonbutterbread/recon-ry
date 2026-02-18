@@ -97,12 +97,8 @@ tools:
     outputs: [wild.txt]
 
   crt_sh:
-    type: inline  # Not a binary, just a command
-    command: |
-      curl -s "https://crt.sh/?q={{DOMAIN}}&output=json" \
-      | jq -r '.[].name_value' \
-      | grep -Po '(\w+\.\w+\.\w+)$' \
-      | anew {{OUTPUT}}
+    type: script
+    command: "{{RECON_DIR}}/scripts/crt_sh.sh {{DOMAIN}} {{OUTPUT}} {{PROJECT_DIR}}/urls.txt"
     required_files: []
     outputs: [wild.txt]
 

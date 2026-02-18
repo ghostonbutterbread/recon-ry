@@ -265,6 +265,16 @@ print(rate)
 "
 }
 
+# Get default timeout (seconds) from config
+get_default_timeout() {
+    echo "$GENERAL_CONFIG_JSON" | python3 -c "
+import sys
+import json
+data = json.load(sys.stdin)
+print(data.get('defaults', {}).get('timeout', 300))
+"
+}
+
 # Update tool enabled status (writes to state.yaml)
 update_tool_status() {
     local tool="$1"
