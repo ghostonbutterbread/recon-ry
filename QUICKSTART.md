@@ -205,6 +205,7 @@ python3 -c "import yaml; yaml.safe_load(open('config/general.yaml'))"
 2. **See real-world examples**: [EXAMPLES.md](EXAMPLES.md)
 3. **Learn to add tools**: [CONTRIBUTING.md](CONTRIBUTING.md)
 4. **Customize configs**: Edit `config/*.yaml` files
+5. **Config defaults**: Missing configs are restored from `config/defaults/`; `config/state.yaml` is user-specific and auto-created
 
 ## Tips
 
