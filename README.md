@@ -1,4 +1,4 @@
-# Claude Recon Framework
+# Recon Framework
 
 A modular, extensible reconnaissance framework for bug bounty hunting and security research. Built with bash for maximum CLI tool compatibility and ease of customization.
 
@@ -31,8 +31,8 @@ pip3 install pyyaml
 ### Clone and Setup
 
 ```bash
-git clone https://github.com/yourusername/claude-recon.git
-cd claude-recon
+git clone https://github.com/Ryushe/recon-ry
+cd recon-ry
 chmod +x main.sh
 
 # Check tool installation status
