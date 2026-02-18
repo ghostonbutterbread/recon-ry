@@ -1,0 +1,216 @@
+# General configuration for recon framework
+#
+# NOTE: Tool and stage enabled/disabled status is managed in state.yaml
+# This file defines tool commands, configurations, and stage dependencies.
+# To enable/disable tools or stages, use the TUI or edit state.yaml directly.
+
+# Default settings
+defaults:
+  timeout: 300  # Default timeout for tools in seconds
+  threads: 50   # Default thread count for tools that support it
+  retries: 3    # Number of retries for failed tools
+  rate_limit: 150 # Default rate limit in requests per second
+
+# Per-tool rate limiting (requests per second)
+# Applied to each tool's native rate limiting flag
+rate_limits:
+  subfinder: 150    # Subdomain enumeration rate
+  assetfinder: 150  # Asset discovery rate
+  amass: 100        # Amass enumeration rate (lower for heavier tool)
+  katana: 150       # Crawling rate
+  hakrawler: 150    # Crawling rate
+  waybackurls: 150  # API request rate
+  gau: 150          # Archive fetching rate
+  httpx: 150        # HTTP probing rate
+  nuclei: 150       # Vulnerability scanning rate
+  ffuf: 150         # Fuzzing rate
+  dirsearch: 150    # Directory brute-force rate
+
+# Stage configuration
+stages:
+  subdomain_enum:
+    parallel: true
+    description: "Subdomain enumeration"
+    tools:
+      - subfinder
+      - crt_sh
+      - assetfinder
+      - amass
+
+  url_discovery:
+    parallel: false
+    depends_on: [subdomain_enum]
+    description: "URL discovery and crawling"
+    tools:
+      - katana
+      - hakrawler
+      - waybackurls
+      - gau
+
+  alive_check:
+    parallel: false
+    depends_on: [url_discovery]
+    description: "Check alive hosts and services"
+    tools:
+      - httpx
+
+  param_discovery:
+    parallel: false
+    depends_on: [alive_check]
+    description: "Parameter discovery"
+    tools:
+      - gau_params
+      - uro
+      - js_files
+      - unclutter_jsfiles
+
+  dir_enum:
+    parallel: true
+    depends_on: [alive_check]
+    description: "Directory enumeration"
+    tools:
+      - ffuf
+      - dirsearch
+
+  secret_scan:
+    parallel: false
+    depends_on: [url_discovery]
+    description: "Secret and sensitive data scanning"
+    tools:
+      - nuclei
+      - trufflehog
+      - secret_finder
+
+  dork:
+    parallel: false
+    description: "Google dorking"
+    tools:
+      - dork_scan
+
+# Tool definitions
+tools:
+  # Subdomain Enumeration
+  subfinder:
+    type: binary  # Requires binary installation
+    command: "subfinder -d {{DOMAIN}} -all -silent -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
+    required_files: []
+    outputs: [wild.txt]
+
+  crt_sh:
+    type: script
+    command: "{{RECON_DIR}}/scripts/crt_sh.sh {{DOMAIN}} {{OUTPUT}} {{PROJECT_DIR}}/urls.txt"
+    required_files: []
+    outputs: [wild.txt]
+
+  assetfinder:
+    type: binary
+    command: "assetfinder --subs-only {{DOMAIN}}"
+    required_files: []
+    outputs: [wild.txt]
+    note: "assetfinder does not have native rate limiting"
+
+  amass:
+    type: binary
+    command: "amass enum -passive -d {{DOMAIN}} -rf {{RATE_LIMIT}} -silent"
+    required_files: []
+    outputs: [wild.txt]
+
+  # URL Discovery
+  katana:
+    type: binary
+    command: "katana -list {{INPUT}} -d 3 -silent -jc -kf all -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
+    required_files: [wild.txt]
+    outputs: [urls.txt]
+
+  hakrawler:
+    type: binary
+    command: "cat {{INPUT}} | hakrawler -d 3 -plain > {{OUTPUT}}"
+    required_files: [wild.txt]
+    outputs: [urls.txt]
+    note: "hakrawler does not have native rate limiting"
+
+  waybackurls:
+    type: binary
+    command: "cat {{INPUT}} | waybackurls > {{OUTPUT}}"
+    required_files: [wild.txt]
+    outputs: [urls.txt]
+    note: "waybackurls does not have native rate limiting"
+
+  gau:
+    type: binary
+    command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
+    required_files: [wild.txt]
+    outputs: [urls.txt]
+    note: "gau does not have native rate limiting"
+
+  # Alive Check
+  httpx:
+    type: binary
+    command: "httpx -list {{INPUT}} -silent -mc 200,201,202,203,204,301,302,307,308,401,403,405 -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
+    required_files: [urls.txt]
+    outputs: [alive.txt]
+
+  # Parameter Discovery
+  gau_params:
+    type: inline # gau normal run will check install
+    command: "cat {{INPUT}} | gau --threads 5 > {{OUTPUT}}"
+    required_files: [alive.txt]
+    outputs: [params_raw.txt]
+    note: "gau does not have native rate limiting"
+
+  uro:
+    type: binary
+    command: "cat {{INPUT}} | uro -o {{OUTPUT}}"
+    required_files: [params_raw.txt]
+    outputs: [params.txt]
+
+  js_files:
+    type: inline
+    command: "cat {{INPUT}} | grep '.js$' > {{OUTPUT}}"
+    required_files: [params.txt]
+    outputs: [jsfiles.txt]
+
+  unclutter_jsfiles:
+    type: inline
+    command: "cat {{INPUT}} | uro | anew {{OUTPUT}}"
+    required_files: [jsfiles.txt]
+    outputs: [jsfiles.txt]
+
+  # Directory Enumeration
+  ffuf:
+    type: binary
+    command: "ffuf -u {{URL}}/FUZZ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} -o {{OUTPUT}}"
+    required_files: [alive.txt]
+    outputs: [dirs.txt]
+
+  dirsearch:
+    type: binary
+    command: "dirsearch -u {{URL}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --max-rate={{RATE_LIMIT}} --format=simple -o {{OUTPUT}}"
+    required_files: [alive.txt]
+    outputs: [dirs.txt]
+
+  # Secret Scanning
+  nuclei:
+    type: binary
+    command: "nuclei -list {{INPUT}} -t ~/nuclei-templates/exposures/ -silent -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
+    required_files: [urls.txt]
+    outputs: [secrets.txt]
+
+  trufflehog:
+    type: binary
+    command: "trufflehog filesystem {{PROJECT_DIR}} --json --no-update"
+    required_files: []
+    outputs: [secrets.txt]
+
+  secret_finder:
+    type: script
+    command: "cat {{INPUT}} | while read url; do python3 {{SECRETFINDER_DIR}}/SecretFinder.py -i \"$url\" -o cli >> {{OUTPUT}}; done"
+    required_files: [jsfiles.txt]
+    outputs: [secrets.txt]
+
+  # Google Dorking
+  dork_scan:
+    type: inline
+    command: "echo 'Manual dorking for: site:{{DOMAIN}} inurl:admin OR inurl:login OR inurl:api'"
+    required_files: []
+    outputs: [dorks.txt]

@@ -11,12 +11,37 @@ DOMAIN="${1:?Usage: crt_sh.sh <domain> <output_file> [urls_file]}"
 OUTPUT="${2:?Usage: crt_sh.sh <domain> <output_file> [urls_file]}"
 URLS_FILE="${3:-}"
 
+append_unique() {
+    if command -v anew &> /dev/null; then
+        anew "${OUTPUT}"
+    else
+        cat >> "${OUTPUT}"
+        sort -u "${OUTPUT}" -o "${OUTPUT}"
+    fi
+}
+
 query_crt_sh() {
     local target="$1"
-    curl -s "https://crt.sh/?q=${target}&output=json" \
-        | jq -r '.[].name_value' \
-        | grep -Po '(\w+\.\w+\.\w+)$' \
-        | anew "${OUTPUT}"
+    local results=""
+
+    results=$(curl -s "https://crt.sh/?q=${target}&output=json" \
+        | jq -r '.[].name_value' 2>/dev/null || true)
+
+    if [[ -z "$results" ]]; then
+        return 0
+    fi
+
+    # Normalize wildcard entries and extract hostnames safely.
+    local hosts=""
+    hosts=$(echo "$results" \
+        | sed 's/\\*\\.//g' \
+        | grep -Eo '([A-Za-z0-9-]+\\.)+[A-Za-z]{2,}' || true)
+
+    if [[ -z "$hosts" ]]; then
+        return 0
+    fi
+
+    echo "$hosts" | append_unique
 }
 
 # Query for the root domain first

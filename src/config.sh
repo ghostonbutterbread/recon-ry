@@ -3,6 +3,7 @@
 # Config management module
 
 CONFIG_DIR="$SCRIPT_DIR/config"
+DEFAULT_CONFIG_DIR="$CONFIG_DIR/defaults"
 GENERAL_CONFIG="$CONFIG_DIR/general.yaml"
 PROFILES_CONFIG="$CONFIG_DIR/profiles.yaml"
 INSTALL_CONFIG="$CONFIG_DIR/install.yaml"
@@ -46,9 +47,37 @@ except Exception as e:
     }
 }
 
+# Ensure a config file exists; restore from defaults when possible.
+ensure_config_file() {
+    local target="$1"
+    local default_name="$2"
+    local create_fn="${3:-}"
+
+    if [[ -f "$target" ]]; then
+        return 0
+    fi
+
+    log_warning "Config file not found, creating: $target"
+
+    if [[ -n "$default_name" && -f "$DEFAULT_CONFIG_DIR/$default_name" ]]; then
+        cp "$DEFAULT_CONFIG_DIR/$default_name" "$target"
+        return 0
+    fi
+
+    if [[ -n "$create_fn" ]]; then
+        "$create_fn"
+        return 0
+    fi
+
+    log_error "No default available for $target"
+    exit 1
+}
+
 # Load general config
 load_general_config() {
     log_debug "Loading general config from $GENERAL_CONFIG"
+
+    ensure_config_file "$GENERAL_CONFIG" "general.yaml"
 
     if ! command -v python3 &> /dev/null; then
         log_error "Python3 is required for YAML parsing"
@@ -70,12 +99,14 @@ load_general_config() {
 # Load profiles config
 load_profiles_config() {
     log_debug "Loading profiles config from $PROFILES_CONFIG"
+    ensure_config_file "$PROFILES_CONFIG" "profiles.yaml"
     PROFILES_CONFIG_JSON=$(parse_yaml "$PROFILES_CONFIG")
 }
 
 # Load install config
 load_install_config() {
     log_debug "Loading install config from $INSTALL_CONFIG"
+    ensure_config_file "$INSTALL_CONFIG" "install.yaml"
     INSTALL_CONFIG_JSON=$(parse_yaml "$INSTALL_CONFIG")
 }
 
@@ -85,8 +116,7 @@ load_state_config() {
 
     # Create state file if it doesn't exist
     if [[ ! -f "$STATE_CONFIG" ]]; then
-        log_warning "State config not found, creating default state.yaml"
-        create_default_state_config
+        ensure_config_file "$STATE_CONFIG" "state.yaml" create_default_state_config
     fi
 
     STATE_CONFIG_JSON=$(parse_yaml "$STATE_CONFIG")

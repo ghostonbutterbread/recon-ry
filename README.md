@@ -1,4 +1,4 @@
-# Claude Recon Framework
+# Recon Framework
 
 A modular, extensible reconnaissance framework for bug bounty hunting and security research. Built with bash for maximum CLI tool compatibility and ease of customization.
 
@@ -31,8 +31,8 @@ pip3 install pyyaml
 ### Clone and Setup
 
 ```bash
-git clone https://github.com/yourusername/claude-recon.git
-cd claude-recon
+git clone https://github.com/Ryushe/recon-ry
+cd recon-ry
 chmod +x main.sh
 
 # Check tool installation status
@@ -111,7 +111,9 @@ recon-ry/
 ├── config/
 │   ├── general.yaml       # Tool and stage definitions, global rate limits
 │   ├── profiles.yaml      # Scan profile configurations
-│   └── install.yaml       # Tool installation info
+│   ├── install.yaml       # Tool installation info
+│   ├── state.yaml         # User-specific tool/stage enablement (auto-created)
+│   └── defaults/          # Config defaults used to restore missing files
 └── README.md
 ```
 
@@ -137,6 +139,10 @@ The `init` command sets up a project directory interactively before your first s
 ```bash
 ./main.sh init --project ~/bounties/example
 ```
+
+## Config Defaults And State
+
+On first run, any missing config files are restored from `config/defaults/`. The user-specific `config/state.yaml` is not tracked and will be created automatically if it doesn't exist.
 
 It walks through two paste boxes — one for `urls.txt` and one for `wild.txt` — where you can paste your target scope directly from the clipboard. Press `Ctrl+D` on an empty line to save each one.
 

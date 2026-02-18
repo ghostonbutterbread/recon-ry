@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(./main.sh:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(git add:*)",
+      "Bash(bash -n:*)"
     ]
   }
 }
