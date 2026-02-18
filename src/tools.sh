@@ -34,6 +34,10 @@ check_tool_exists() {
             local binary_path=$(get_install_info "$tool" "binary_path")
             if [[ -n "$binary_path" ]]; then
                 binary_path="${binary_path/#\~/$HOME}"
+                # Resolve relative paths against SCRIPT_DIR (bundled scripts)
+                if [[ "$binary_path" != /* ]]; then
+                    binary_path="$SCRIPT_DIR/$binary_path"
+                fi
                 [[ -f "$binary_path" && -x "$binary_path" ]]
             else
                 # Fallback to binary name check
@@ -81,31 +85,53 @@ execute_tool() {
     # Get tool command
     local command=$(get_tool_info "$tool" "command")
 
+    # Get rate limit for this tool
+    local rate_limit=$(get_rate_limit "$tool")
+
     # Replace placeholders
     command="${command//\{\{INPUT\}\}/$input_file}"
     command="${command//\{\{OUTPUT\}\}/$output_file}"
     command="${command//\{\{DOMAIN\}\}/$domain}"
     command="${command//\{\{URL\}\}/$url}"
     command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
-    command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$HOME/tools/SecretFinder}}"
+    command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
+    command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/scripts/SecretFinder}}"
+    command="${command//\{\{RATE_LIMIT\}\}/$rate_limit}"
 
     log_verbose "Running: $tool"
     log_debug "Command: $command"
 
-    # Execute command
+    # Resolve effective timeout: flag > config default; 0 = disabled
+    local effective_timeout
+    if [[ -z "${TOOL_TIMEOUT}" ]]; then
+        effective_timeout=$(get_default_timeout)
+    else
+        effective_timeout=$TOOL_TIMEOUT
+    fi
+
+    # Execute command, wrapped with timeout when applicable
     if [[ $VERBOSE -ge 2 ]]; then
-        # Show full output in very verbose mode
-        eval "$command" 2>&1 | tee -a "$output_file.log" | log_tool_output
+        if [[ $effective_timeout -gt 0 ]]; then
+            timeout "$effective_timeout" bash -c "$command" 2>&1 | tee -a "$output_file.log" | log_tool_output
+        else
+            eval "$command" 2>&1 | tee -a "$output_file.log" | log_tool_output
+        fi
         local exit_code=${PIPESTATUS[0]}
     else
-        # Silent execution
-        eval "$command" > /dev/null 2>&1
+        if [[ $effective_timeout -gt 0 ]]; then
+            timeout "$effective_timeout" bash -c "$command" > /dev/null 2>&1
+        else
+            eval "$command" > /dev/null 2>&1
+        fi
         local exit_code=$?
     fi
 
     if [[ $exit_code -eq 0 ]]; then
         log_debug "Tool $tool completed successfully"
         return 0
+    elif [[ $exit_code -eq 124 ]]; then
+        log_warning "Tool $tool timed out after ${effective_timeout}s"
+        return 0  # Treat timeout as non-fatal; keep whatever output was produced
     else
         log_warning "Tool $tool failed with exit code $exit_code"
         return 1

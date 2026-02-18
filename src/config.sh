@@ -6,12 +6,17 @@ CONFIG_DIR="$SCRIPT_DIR/config"
 GENERAL_CONFIG="$CONFIG_DIR/general.yaml"
 PROFILES_CONFIG="$CONFIG_DIR/profiles.yaml"
 INSTALL_CONFIG="$CONFIG_DIR/install.yaml"
+STATE_CONFIG="$CONFIG_DIR/state.yaml"
 
 # Associative arrays to store config
 declare -A STAGES
 declare -A TOOLS
 declare -A PROFILES
 declare -A INSTALL_INFO
+
+# Project-specific rate limits loaded from rate_limit.conf
+declare -A PROJECT_RATE_LIMITS
+RATE_LIMIT_CONF_LOADED=false
 
 # Simple YAML parser for our specific format
 parse_yaml() {
@@ -74,11 +79,99 @@ load_install_config() {
     INSTALL_CONFIG_JSON=$(parse_yaml "$INSTALL_CONFIG")
 }
 
+# Load state config
+load_state_config() {
+    log_debug "Loading state config from $STATE_CONFIG"
+
+    # Create state file if it doesn't exist
+    if [[ ! -f "$STATE_CONFIG" ]]; then
+        log_warning "State config not found, creating default state.yaml"
+        create_default_state_config
+    fi
+
+    STATE_CONFIG_JSON=$(parse_yaml "$STATE_CONFIG")
+}
+
+# Create default state config
+create_default_state_config() {
+    cat > "$STATE_CONFIG" << 'EOF'
+# Tool and Stage State Configuration
+# This file tracks which tools and stages are enabled/disabled
+
+# Tool enabled/disabled state
+tools:
+  subfinder: true
+  crt_sh: true
+  assetfinder: true
+  amass: true
+  katana: true
+  hakrawler: true
+  waybackurls: true
+  gau: true
+  httpx: true
+  gau_params: true
+  uro: true
+  js_files: true
+  unclutter_jsfiles: true
+  ffuf: true
+  dirsearch: true
+  nuclei_secrets: true
+  trufflehog: true
+  secret_finder: true
+  dork_scan: true
+
+# Stage enabled/disabled state
+stages:
+  subdomain_enum: true
+  url_discovery: true
+  alive_check: true
+  param_discovery: true
+  dir_enum: true
+  secret_scan: true
+  dork: true
+EOF
+}
+
+# Load project-specific rate limits from $PROJECT_DIR/rate_limit.conf
+# If the file doesn't exist the global general.yaml values are used instead.
+load_rate_limit_conf() {
+    RATE_LIMIT_CONF_LOADED=false
+    PROJECT_RATE_LIMITS=()
+
+    if [[ -z "${PROJECT_DIR:-}" ]]; then
+        return 0
+    fi
+
+    local conf_file="$PROJECT_DIR/rate_limit.conf"
+
+    if [[ ! -f "$conf_file" ]]; then
+        return 0
+    fi
+
+    log_debug "Loading project rate limits from $conf_file"
+
+    while IFS='=' read -r key value; do
+        # Skip comment lines and blank lines
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        # Remove all whitespace from key and value (keys are tool names,
+        # values are integers — neither should contain meaningful spaces)
+        key="${key//[[:space:]]/}"
+        value="${value//[[:space:]]/}"
+        [[ -z "$key" ]] && continue
+        PROJECT_RATE_LIMITS["$key"]="$value"
+    done < "$conf_file"
+
+    RATE_LIMIT_CONF_LOADED=true
+    log_debug "Loaded project rate limits (${#PROJECT_RATE_LIMITS[@]} entries)"
+}
+
 # Load all configs
 load_all_configs() {
     load_general_config
     load_profiles_config
     load_install_config
+    load_state_config
+    load_rate_limit_conf
 }
 
 # Get profile stages
@@ -146,17 +239,31 @@ print(value)
 "
 }
 
-# Check if tool is enabled
+# Check if tool is enabled (from state.yaml)
 is_tool_enabled() {
     local tool="$1"
-    local enabled=$(get_tool_info "$tool" "enabled")
+    local enabled=$(echo "$STATE_CONFIG_JSON" | python3 -c "
+import sys
+import json
+data = json.load(sys.stdin)
+tools = data.get('tools', {})
+enabled = tools.get('$tool', True)
+print('true' if enabled else 'false')
+")
     [[ "$enabled" == "true" ]]
 }
 
-# Check if stage is enabled
+# Check if stage is enabled (from state.yaml)
 is_stage_enabled() {
     local stage="$1"
-    local enabled=$(get_stage_info "$stage" "enabled")
+    local enabled=$(echo "$STATE_CONFIG_JSON" | python3 -c "
+import sys
+import json
+data = json.load(sys.stdin)
+stages = data.get('stages', {})
+enabled = stages.get('$stage', True)
+print('true' if enabled else 'false')
+")
     [[ "$enabled" == "true" ]]
 }
 
@@ -182,49 +289,133 @@ print(' '.join(stages))
 "
 }
 
-# Update tool enabled status
+# Get rate limit for a specific tool.
+# Resolution order:
+#   1. rate_limit.conf tool entry  (project-specific, if file exists)
+#   2. rate_limit.conf 'default'   (project-specific fallback)
+#   3. general.yaml rate_limits    (global config, when no rate_limit.conf)
+get_rate_limit() {
+    local tool="$1"
+
+    if [[ "$RATE_LIMIT_CONF_LOADED" == "true" ]]; then
+        # 1. Tool-specific entry in project rate_limit.conf
+        local tool_rate="${PROJECT_RATE_LIMITS[$tool]+x}"
+        if [[ -n "$tool_rate" && -n "${PROJECT_RATE_LIMITS[$tool]}" ]]; then
+            echo "${PROJECT_RATE_LIMITS[$tool]}"
+            return
+        fi
+
+        # 2. 'default' entry in project rate_limit.conf
+        local default_rate="${PROJECT_RATE_LIMITS[default]+x}"
+        if [[ -n "$default_rate" && -n "${PROJECT_RATE_LIMITS[default]}" ]]; then
+            echo "${PROJECT_RATE_LIMITS[default]}"
+            return
+        fi
+
+        # 3. Hardcoded fallback (rate_limit.conf existed but had no usable values)
+        echo "150"
+        return
+    fi
+
+    # rate_limit.conf not present — use general.yaml
+    echo "$GENERAL_CONFIG_JSON" | python3 -c "
+import sys
+import json
+data = json.load(sys.stdin)
+rate_limits = data.get('rate_limits', {})
+default_rate = data.get('defaults', {}).get('rate_limit', 150)
+rate = rate_limits.get('$tool', default_rate)
+print(rate)
+"
+}
+
+# Get default timeout (seconds) from config
+get_default_timeout() {
+    echo "$GENERAL_CONFIG_JSON" | python3 -c "
+import sys
+import json
+data = json.load(sys.stdin)
+print(data.get('defaults', {}).get('timeout', 300))
+"
+}
+
+# Update tool enabled status (writes to state.yaml)
 update_tool_status() {
     local tool="$1"
     local enabled="$2"
 
-    # Use python to update the YAML file
+    # Use python to update the state.yaml file
     python3 << EOF
 import yaml
+import sys
 
-with open('$GENERAL_CONFIG', 'r') as f:
-    config = yaml.safe_load(f)
+try:
+    with open('$STATE_CONFIG', 'r') as f:
+        config = yaml.safe_load(f)
 
-if 'tools' in config and '$tool' in config['tools']:
-    config['tools']['$tool']['enabled'] = $enabled
+    if config is None:
+        config = {}
+    if 'tools' not in config:
+        config['tools'] = {}
 
-with open('$GENERAL_CONFIG', 'w') as f:
-    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    # Convert string "true"/"false" to Python boolean
+    config['tools']['$tool'] = True if '$enabled' == 'true' else False
+
+    with open('$STATE_CONFIG', 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+except Exception as e:
+    print(f"Error updating tool '{tool}': {e}", file=sys.stderr)
+    sys.exit(1)
 EOF
 
-    # Reload config
-    load_general_config
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "Failed to update tool $tool"
+        return 1
+    fi
+
+    # Reload state config
+    load_state_config
 }
 
-# Update stage enabled status
+# Update stage enabled status (writes to state.yaml)
 update_stage_status() {
     local stage="$1"
     local enabled="$2"
 
     python3 << EOF
 import yaml
+import sys
 
-with open('$GENERAL_CONFIG', 'r') as f:
-    config = yaml.safe_load(f)
+try:
+    with open('$STATE_CONFIG', 'r') as f:
+        config = yaml.safe_load(f)
 
-if 'stages' in config and '$stage' in config['stages']:
-    config['stages']['$stage']['enabled'] = $enabled
+    if config is None:
+        config = {}
+    if 'stages' not in config:
+        config['stages'] = {}
 
-with open('$GENERAL_CONFIG', 'w') as f:
-    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+    # Convert string "true"/"false" to Python boolean
+    config['stages']['$stage'] = True if '$enabled' == 'true' else False
+
+    with open('$STATE_CONFIG', 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+except Exception as e:
+    print(f"Error updating stage '{stage}': {e}", file=sys.stderr)
+    sys.exit(1)
 EOF
 
-    # Reload config
-    load_general_config
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "Failed to update stage $stage"
+        return 1
+    fi
+
+    # Reload state config
+    load_state_config
 }
 
 # Update stage parallel status
@@ -239,7 +430,8 @@ with open('$GENERAL_CONFIG', 'r') as f:
     config = yaml.safe_load(f)
 
 if 'stages' in config and '$stage' in config['stages']:
-    config['stages']['$stage']['parallel'] = $parallel
+    # Convert string "true"/"false" to Python boolean
+    config['stages']['$stage']['parallel'] = True if '$parallel' == 'true' else False
 
 with open('$GENERAL_CONFIG', 'w') as f:
     yaml.dump(config, f, default_flow_style=False, sort_keys=False)
@@ -247,4 +439,59 @@ EOF
 
     # Reload config
     load_general_config
+}
+
+# Batch update all stage statuses at once (more efficient)
+batch_update_stage_status() {
+    # Build a space-separated list of stage:state pairs
+    local updates=""
+    local all_stages=$(get_all_stages)
+
+    for stage in $all_stages; do
+        local state="$1"
+        if [[ -z "$state" ]]; then
+            log_error "Missing state for stage $stage"
+            return 1
+        fi
+        shift
+        updates="$updates $stage:$state"
+    done
+
+    python3 << EOF
+import yaml
+import sys
+
+try:
+    with open('$STATE_CONFIG', 'r') as f:
+        config = yaml.safe_load(f)
+
+    if config is None:
+        config = {}
+    if 'stages' not in config:
+        config['stages'] = {}
+
+    # Parse and update all stages
+    updates = '$updates'.strip().split()
+
+    for update in updates:
+        if ':' in update:
+            stage, state = update.split(':', 1)
+            config['stages'][stage] = True if state == 'true' else False
+
+    with open('$STATE_CONFIG', 'w') as f:
+        yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+
+except Exception as e:
+    print(f'Error updating stages: {e}', file=sys.stderr)
+    sys.exit(1)
+EOF
+
+    local exit_code=$?
+    if [[ $exit_code -ne 0 ]]; then
+        log_error "Failed to update stages"
+        return 1
+    fi
+
+    # Reload state config
+    load_state_config
 }

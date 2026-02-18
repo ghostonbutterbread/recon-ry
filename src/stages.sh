@@ -53,11 +53,15 @@ execute_stage() {
         return 0
     fi
 
-    # Special check for subdomain_enum: skip if no URL/domain and no wild.txt
+    # Special check for subdomain_enum: all tools require a domain, skip if none provided
     if [[ "$stage" == "subdomain_enum" ]]; then
-        if [[ -z "$domain" ]] && [[ ! -s "$project_dir/wild.txt" ]]; then
-            log_warning "Stage subdomain_enum skipped: no URL provided and wild.txt not found"
-            log_info "Subdomain enumeration requires either --url parameter or existing wild.txt"
+        if [[ -z "$domain" ]]; then
+            if [[ -s "$project_dir/wild.txt" ]]; then
+                log_info "Stage subdomain_enum skipped: no URL provided, using existing wild.txt"
+            else
+                log_warning "Stage subdomain_enum skipped: no URL provided and wild.txt not found"
+                log_info "Subdomain enumeration requires --url to be specified"
+            fi
             return 0
         fi
     fi

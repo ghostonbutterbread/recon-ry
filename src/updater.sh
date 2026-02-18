@@ -102,6 +102,10 @@ update_tool() {
         git)
             local binary_path=$(get_install_info "$tool" "binary_path")
             binary_path="${binary_path/#\~/$HOME}"
+            # Resolve relative paths against SCRIPT_DIR
+            if [[ -n "$binary_path" && "$binary_path" != /* ]]; then
+                binary_path="$SCRIPT_DIR/$binary_path"
+            fi
             local repo_dir=$(dirname "$binary_path")
             if [[ -d "$repo_dir/.git" ]]; then
                 log_verbose "Pulling latest changes for $tool"
@@ -169,21 +173,61 @@ check_tool_status() {
 
 # Install all missing tools
 install_missing_tools() {
-    log_info "Installing missing tools..."
+    log_info "Checking for missing tools..."
 
     local all_tools=$(get_all_tools)
+    local missing_tools=()
+
+    # First pass: collect all missing tools
+    for tool in $all_tools; do
+        if ! is_tool_installed "$tool"; then
+            missing_tools+=("$tool")
+        fi
+    done
+
+    # If no missing tools, return early
+    if [[ ${#missing_tools[@]} -eq 0 ]]; then
+        log_success "All tools are already installed!"
+        return 0
+    fi
+
+    # Display missing tools
+    echo ""
+    log_warning "Found ${#missing_tools[@]} missing tool(s):"
+    for tool in "${missing_tools[@]}"; do
+        echo "  - $tool"
+    done
+    echo ""
+
+    # Prompt user for confirmation
+    read -p "Would you like to install all missing tools? (y/n): " -n 1 -r
+    echo ""
+    echo ""
+
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        log_info "Installation cancelled by user"
+        return 0
+    fi
+
+    # Second pass: install all missing tools
+    log_info "Installing ${#missing_tools[@]} missing tools..."
+    echo ""
     local installed=0
     local failed=0
 
-    for tool in $all_tools; do
-        if ! is_tool_installed "$tool"; then
-            if install_tool "$tool"; then
-                ((installed++))
-            else
-                ((failed++))
-            fi
+    # Temporarily disable exit on error to continue installing all tools
+    set +e
+
+    for tool in "${missing_tools[@]}"; do
+        if install_tool "$tool"; then
+            ((installed++))
+        else
+            ((failed++))
         fi
     done
+
+    # Re-enable exit on error
+    set -e
 
     echo ""
     log_info "Installation complete: $installed installed, $failed failed"
@@ -252,6 +296,54 @@ for d in deps:
     fi
 }
 
+# Update (or install) wordlist git repositories
+update_wordlists() {
+    log_info "Updating wordlist repositories..."
+
+    local names
+    names=$(echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for name in data.get('wordlists', {}).keys():
+    print(name)
+")
+
+    if [[ -z "$names" ]]; then
+        log_verbose "No wordlist repositories configured"
+        return 0
+    fi
+
+    for name in $names; do
+        local source path full_path
+        source=$(echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data.get('wordlists', {}).get('$name', {}).get('source', ''))")
+        path=$(echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data.get('wordlists', {}).get('$name', {}).get('path', ''))")
+        full_path="$SCRIPT_DIR/$path"
+
+        if [[ -d "$full_path/.git" ]]; then
+            log_info "Updating wordlist $name..."
+            if (cd "$full_path" && git pull); then
+                log_success "Wordlist $name updated"
+            else
+                log_error "Failed to update wordlist $name"
+            fi
+        else
+            log_info "Installing wordlist $name from $source..."
+            mkdir -p "$(dirname "$full_path")"
+            if git clone "$source" "$full_path"; then
+                log_success "Wordlist $name installed"
+            else
+                log_error "Failed to install wordlist $name"
+            fi
+        fi
+    done
+}
+
 # Main update function
 run_update() {
     log_info "Running update module..."
@@ -267,6 +359,10 @@ run_update() {
 
     # Update existing tools
     update_all_tools
+    echo ""
+
+    # Update wordlist repositories
+    update_wordlists
     echo ""
 
     log_success "Update complete!"

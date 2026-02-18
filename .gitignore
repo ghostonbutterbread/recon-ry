@@ -33,3 +33,7 @@ history/
 
 # But keep empty template files
 !config/*.txt
+
+# Externally cloned tool/wordlist repositories (managed via git pull in updater)
+scripts/SecretFinder/
+wordlists/

@@ -5,12 +5,12 @@
 #   - script: Custom script at specific path
 
 tools:
-  # Inline commands (no installation needed)
+  # Script-based tools
   crt_sh:
-    install_method: inline
-    install_command: "# Uses curl and jq - no installation needed"
-    binary_name: crt_sh
-    dependencies: [curl, jq]
+    install_method: script
+    install_command: "# Bundled script - no installation needed"
+    binary_path: "scripts/crt_sh.sh"
+    dependencies: [curl, jq, anew]
 
   dork_scan:
     install_method: inline
@@ -111,23 +111,30 @@ tools:
     binary_path: "~/tools/dirsearch/dirsearch.py"
 
   trufflehog:
-    install_method: go
-    install_command: "go install github.com/trufflesecurity/trufflehog/v3@latest"
+    install_method: apt
+    install_command: "curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b $HOME/go/bin"
     update_check: "github:trufflesecurity/trufflehog"
     binary_name: trufflehog
 
   secret_finder:
     install_method: git
-    install_command: "git clone https://github.com/m4ll0k/SecretFinder.git ~/tools/SecretFinder && pip3 install -r ~/tools/SecretFinder/requirements.txt"
+    install_command: "git clone https://github.com/m4ll0k/SecretFinder.git $SCRIPT_DIR/scripts/SecretFinder && pip3 install -r $SCRIPT_DIR/scripts/SecretFinder/requirements.txt"
     update_check: "github:m4ll0k/SecretFinder"
     binary_name: SecretFinder.py
-    binary_path: "~/tools/SecretFinder/SecretFinder.py"
+    binary_path: "scripts/SecretFinder/SecretFinder.py"
 
   anew:
     install_method: go
     install_command: "go install github.com/tomnomnom/anew@latest"
     update_check: "github:tomnomnom/anew"
     binary_name: anew
+
+# External wordlist repositories (cloned into the repo's wordlists/ dir)
+wordlists:
+  one_list_for_all:
+    source: "https://github.com/six2dez/OneListForAll"
+    path: "wordlists/OneListForAll"
+    description: "Comprehensive wordlist collection for directory and parameter fuzzing"
 
 # System dependencies
 dependencies:

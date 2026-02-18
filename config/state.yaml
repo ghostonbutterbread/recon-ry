@@ -1,0 +1,28 @@
+tools:
+  subfinder: true
+  crt_sh: true
+  assetfinder: true
+  amass: false
+  katana: false
+  hakrawler: false
+  waybackurls: true
+  gau: true
+  httpx: true
+  gau_params: true
+  uro: true
+  js_files: true
+  unclutter_jsfiles: true
+  ffuf: true
+  dirsearch: true
+  nuclei: true
+  trufflehog: false
+  secret_finder: true
+  dork_scan: true
+stages:
+  subdomain_enum: true
+  url_discovery: true
+  alive_check: true
+  param_discovery: true
+  dir_enum: true
+  secret_scan: true
+  dork: false
