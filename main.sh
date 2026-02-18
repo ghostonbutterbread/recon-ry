@@ -13,6 +13,7 @@ source "$SCRIPT_DIR/src/stages.sh"
 source "$SCRIPT_DIR/src/output.sh"
 source "$SCRIPT_DIR/src/updater.sh"
 source "$SCRIPT_DIR/src/tui.sh"
+source "$SCRIPT_DIR/src/init.sh"
 
 # Global variables
 VERBOSE=0
@@ -29,6 +30,7 @@ show_usage() {
 Usage: $(basename "$0") <command> [options]
 
 Commands:
+    init                Initialize a new project directory
     recon               Run reconnaissance based on profile
     secrets             Run secret scanning operations
     enable_tools        Interactive TUI to enable/disable tools
@@ -44,6 +46,39 @@ Examples:
     $(basename "$0") secrets --help
     $(basename "$0") recon --url example.com --full
     $(basename "$0") enable_tools
+EOF
+}
+
+# Init command help
+show_init_help() {
+    cat << EOF
+Usage: $(basename "$0") init --project <dir>
+
+Description:
+    Initialize a new project directory. Prompts for target URL and subdomain
+    lists, then creates a project-specific rate_limit.conf pre-populated with
+    the current values from general.yaml.
+
+Options:
+    --project <dir>     Project directory to initialize (required)
+    -h, --help          Show this help message
+
+Prompts:
+    urls.txt            Path to an existing URL list, or blank for an empty file
+    wild.txt            Path to an existing subdomain/wildcard list, or blank
+
+Files created:
+    <project>/urls.txt          Target URL list
+    <project>/wild.txt          Wildcard/subdomain list
+    <project>/rate_limit.conf   Per-project rate limit overrides
+
+Rate limit precedence (when running recon/secrets):
+    1. <project>/rate_limit.conf  tool entry   (most specific)
+    2. <project>/rate_limit.conf  default=     (project-wide fallback)
+    3. global config/general.yaml              (used only when rate_limit.conf absent)
+
+Examples:
+    $(basename "$0") init --project ~/bounties/example
 EOF
 }
 
@@ -272,6 +307,9 @@ EOF
 show_command_help() {
     local command="$1"
     case "$command" in
+        init)
+            show_init_help
+            ;;
         recon)
             show_recon_help
             ;;
@@ -314,7 +352,7 @@ parse_args() {
 
     # Check if command is valid
     case "$COMMAND" in
-        recon|secrets|enable_tools|set_stages|update|check)
+        init|recon|secrets|enable_tools|set_stages|update|check)
             # Valid command, continue parsing
             ;;
         *)
@@ -411,6 +449,15 @@ main() {
     load_all_configs
 
     case "$COMMAND" in
+        init)
+            if [[ -z "$PROJECT_DIR" ]]; then
+                log_error "--project <dir> is required for init"
+                echo ""
+                show_init_help
+                exit 1
+            fi
+            run_init "$PROJECT_DIR"
+            ;;
         recon)
             # Validate required arguments
             if [[ -z "$PROJECT_DIR" && -z "$URL" ]]; then

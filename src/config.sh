@@ -14,6 +14,10 @@ declare -A TOOLS
 declare -A PROFILES
 declare -A INSTALL_INFO
 
+# Project-specific rate limits loaded from rate_limit.conf
+declare -A PROJECT_RATE_LIMITS
+RATE_LIMIT_CONF_LOADED=false
+
 # Simple YAML parser for our specific format
 parse_yaml() {
     local file="$1"
@@ -128,12 +132,46 @@ stages:
 EOF
 }
 
+# Load project-specific rate limits from $PROJECT_DIR/rate_limit.conf
+# If the file doesn't exist the global general.yaml values are used instead.
+load_rate_limit_conf() {
+    RATE_LIMIT_CONF_LOADED=false
+    PROJECT_RATE_LIMITS=()
+
+    if [[ -z "${PROJECT_DIR:-}" ]]; then
+        return 0
+    fi
+
+    local conf_file="$PROJECT_DIR/rate_limit.conf"
+
+    if [[ ! -f "$conf_file" ]]; then
+        return 0
+    fi
+
+    log_debug "Loading project rate limits from $conf_file"
+
+    while IFS='=' read -r key value; do
+        # Skip comment lines and blank lines
+        [[ "$key" =~ ^[[:space:]]*# ]] && continue
+        # Remove all whitespace from key and value (keys are tool names,
+        # values are integers — neither should contain meaningful spaces)
+        key="${key//[[:space:]]/}"
+        value="${value//[[:space:]]/}"
+        [[ -z "$key" ]] && continue
+        PROJECT_RATE_LIMITS["$key"]="$value"
+    done < "$conf_file"
+
+    RATE_LIMIT_CONF_LOADED=true
+    log_debug "Loaded project rate limits (${#PROJECT_RATE_LIMITS[@]} entries)"
+}
+
 # Load all configs
 load_all_configs() {
     load_general_config
     load_profiles_config
     load_install_config
     load_state_config
+    load_rate_limit_conf
 }
 
 # Get profile stages
@@ -251,9 +289,35 @@ print(' '.join(stages))
 "
 }
 
-# Get rate limit for a specific tool
+# Get rate limit for a specific tool.
+# Resolution order:
+#   1. rate_limit.conf tool entry  (project-specific, if file exists)
+#   2. rate_limit.conf 'default'   (project-specific fallback)
+#   3. general.yaml rate_limits    (global config, when no rate_limit.conf)
 get_rate_limit() {
     local tool="$1"
+
+    if [[ "$RATE_LIMIT_CONF_LOADED" == "true" ]]; then
+        # 1. Tool-specific entry in project rate_limit.conf
+        local tool_rate="${PROJECT_RATE_LIMITS[$tool]+x}"
+        if [[ -n "$tool_rate" && -n "${PROJECT_RATE_LIMITS[$tool]}" ]]; then
+            echo "${PROJECT_RATE_LIMITS[$tool]}"
+            return
+        fi
+
+        # 2. 'default' entry in project rate_limit.conf
+        local default_rate="${PROJECT_RATE_LIMITS[default]+x}"
+        if [[ -n "$default_rate" && -n "${PROJECT_RATE_LIMITS[default]}" ]]; then
+            echo "${PROJECT_RATE_LIMITS[default]}"
+            return
+        fi
+
+        # 3. Hardcoded fallback (rate_limit.conf existed but had no usable values)
+        echo "150"
+        return
+    fi
+
+    # rate_limit.conf not present — use general.yaml
     echo "$GENERAL_CONFIG_JSON" | python3 -c "
 import sys
 import json
