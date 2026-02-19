@@ -212,6 +212,7 @@ run_recon_project() {
     local history_dir="$project_dir/history/$timestamp"
     mkdir -p "$history_dir"
     log_info "History directory: $history_dir"
+    init_history_baseline "$project_dir" "$history_dir"
 
     # Execute each stage
     local failed_stages=0
