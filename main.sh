@@ -11,6 +11,7 @@ source "$SCRIPT_DIR/src/config.sh"
 source "$SCRIPT_DIR/src/tools.sh"
 source "$SCRIPT_DIR/src/stages.sh"
 source "$SCRIPT_DIR/src/output.sh"
+source "$SCRIPT_DIR/src/scans.sh"
 source "$SCRIPT_DIR/src/updater.sh"
 source "$SCRIPT_DIR/src/tui.sh"
 source "$SCRIPT_DIR/src/init.sh"
@@ -21,6 +22,8 @@ DRY_RUN=false
 PROJECT_DIR=""
 URL=""
 PROFILE="full"
+DIR_ONLY=false
+SCAN_ACTION="list"
 COMMAND=""
 TOOL_TIMEOUT=""  # empty = use config default; 0 = no timeout
 
@@ -32,6 +35,7 @@ Usage: $(basename "$0") <command> [options]
 Commands:
     init                Initialize a new project directory
     recon               Run reconnaissance based on profile
+    scans               List or stop background scans
     secrets             Run secret scanning operations
     enable_tools        Interactive TUI to enable/disable tools
     set_stages          Interactive TUI to configure stages
@@ -99,6 +103,7 @@ Options:
     --fast              Quick scan (subdomain + alive check)
     --urls              URL discovery and alive check (requires wild.txt)
     --dork              Google dorking only
+    --dir               Directory fuzzing only (ffuf + dirsearch, requires alive.txt)
     --project <dir>     Project directory path (required for saving results)
     --url <url>         Target URL/domain to scan
     --timeout <secs>    Kill each tool after this many seconds (0 = no timeout, omit = config default)
@@ -140,6 +145,21 @@ Notes:
     - Subdomain enumeration requires --url or existing wild.txt
     - Use --project to save results, omit for stdout-only output
     - Results are saved to history directory with timestamp
+EOF
+}
+
+# Scans command help
+show_scans_help() {
+    cat << EOF
+Usage: $(basename "$0") scans --project <dir> [--kill]
+
+Description:
+    List background scans by default, or stop them with --kill.
+
+Options:
+    --project <dir>     Project directory path (required)
+    --kill              Stop all running background scans for project
+    -h, --help          Show this help message
 EOF
 }
 
@@ -328,6 +348,9 @@ show_command_help() {
         check)
             show_check_help
             ;;
+        scans)
+            show_scans_help
+            ;;
         *)
             show_usage
             ;;
@@ -352,7 +375,7 @@ parse_args() {
 
     # Check if command is valid
     case "$COMMAND" in
-        init|recon|secrets|enable_tools|set_stages|update|check)
+        init|recon|secrets|enable_tools|set_stages|update|check|scans)
             # Valid command, continue parsing
             ;;
         *)
@@ -397,6 +420,10 @@ parse_args() {
                 PROFILE="dork"
                 shift
                 ;;
+            --dir)
+                DIR_ONLY=true
+                shift
+                ;;
             --project)
                 PROJECT_DIR="$2"
                 shift 2
@@ -428,6 +455,14 @@ parse_args() {
                 source "$SCRIPT_DIR/src/config.sh"
                 load_all_configs
                 run_update
+                shift
+                ;;
+            --list)
+                SCAN_ACTION="list"
+                shift
+                ;;
+            --kill)
+                SCAN_ACTION="kill"
                 shift
                 ;;
             *)
@@ -481,6 +516,20 @@ main() {
             fi
 
             run_recon_project "$PROJECT_DIR" "$URL" "$PROFILE"
+            ;;
+        scans)
+            if [[ -z "$PROJECT_DIR" ]]; then
+                log_error "--project <dir> is required for scans"
+                echo ""
+                show_scans_help
+                exit 1
+            fi
+
+            if [[ "${SCAN_ACTION:-list}" == "kill" ]]; then
+                kill_bg_scans "$PROJECT_DIR"
+            else
+                list_bg_scans "$PROJECT_DIR"
+            fi
             ;;
         secrets)
             # Validate required arguments
