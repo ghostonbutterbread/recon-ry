@@ -139,6 +139,25 @@ execute_tool() {
 }
 
 # Run tool and append output to file using anew
+count_new_entries() {
+    local existing_file="$1"
+    local candidate_file="$2"
+
+    awk '
+        NR==FNR {
+            if ($0 != "") seen[$0]=1
+            next
+        }
+        {
+            if ($0 != "" && !seen[$0] && !counted[$0]) {
+                counted[$0]=1
+                c++
+            }
+        }
+        END { print c+0 }
+    ' "$existing_file" "$candidate_file" 2>/dev/null
+}
+
 run_tool_with_anew() {
     local tool="$1"
     local input_file="$2"
@@ -153,20 +172,32 @@ run_tool_with_anew() {
     if execute_tool "$tool" "$input_file" "$temp_output" "$domain" "$url"; then
         # Use anew to append unique results
         if [[ -s "$temp_output" ]]; then
+            local new_count=0
+
+            # Compute count before merge so repeat runs show real new additions.
+            if [[ -f "$output_file" ]]; then
+                new_count=$(count_new_entries "$output_file" "$temp_output")
+            else
+                new_count=$(awk 'NF { if (!seen[$0]++) c++ } END { print c+0 }' "$temp_output")
+            fi
+
             if command -v anew &> /dev/null; then
                 cat "$temp_output" | anew "$output_file" > /dev/null
-                local new_count=$(cat "$temp_output" | anew "$output_file" -d | wc -l)
-                if [[ $new_count -gt 0 ]]; then
-                    log_success "Tool $tool found $new_count new entries"
-                fi
             else
                 # Fallback if anew is not installed
                 cat "$temp_output" >> "$output_file"
                 sort -u "$output_file" -o "$output_file"
-                log_success "Tool $tool completed (anew not found, using sort -u)"
+                log_debug "Tool $tool merged output without anew (sort -u fallback)"
+            fi
+
+            if [[ $new_count -gt 0 ]]; then
+                log_success "Tool $tool added $new_count new entries to $(basename "$output_file")"
+            else
+                log_info "Tool $tool added 0 new entries to $(basename "$output_file")"
             fi
         else
             log_debug "Tool $tool produced no output"
+            log_info "Tool $tool added 0 new entries to $(basename "$output_file")"
         fi
         rm -f "$temp_output"
         return 0
