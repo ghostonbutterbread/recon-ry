@@ -2,17 +2,91 @@
 
 # Output management module
 
-# Copy outputs to history directory
+HISTORY_BASELINE_DIR=""
+
+get_history_output_files() {
+    if [[ -n "${GENERAL_CONFIG_JSON:-}" ]]; then
+        echo "$GENERAL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+outputs = set()
+for tool in data.get('tools', {}).values():
+    outs = tool.get('outputs', []) or []
+    if isinstance(outs, str):
+        outs = [outs]
+    for o in outs:
+        if o:
+            outputs.add(o)
+print(' '.join(sorted(outputs)))
+"
+    else
+        # Fallback if config isn't loaded for some reason
+        echo "wild.txt urls.txt alive.txt params.txt params_raw.txt jsfiles.txt secrets.txt dirs.txt dorks.txt"
+    fi
+}
+
+# Initialize baseline for history deltas (snapshot of current project outputs)
+init_history_baseline() {
+    local project_dir="$1"
+    local history_dir="$2"
+
+    HISTORY_BASELINE_DIR="$history_dir/.baseline"
+    mkdir -p "$HISTORY_BASELINE_DIR"
+
+    log_debug "Initializing history baseline: $HISTORY_BASELINE_DIR"
+
+    local files
+    files=$(get_history_output_files)
+    for file in $files; do
+        if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
+            cp "$project_dir/$file" "$HISTORY_BASELINE_DIR/$file"
+        else
+            # Ensure baseline exists as empty file for consistent diffing
+            : > "$HISTORY_BASELINE_DIR/$file"
+        fi
+    done
+}
+
+# Copy only new outputs (relative to baseline) to history directory
 copy_outputs_to_history() {
     local project_dir="$1"
     local history_dir="$2"
 
-    log_debug "Copying outputs to history: $history_dir"
+    log_debug "Copying new outputs to history: $history_dir"
 
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt dorks.txt params_raw.txt; do
-        if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
-            cp "$project_dir/$file" "$history_dir/"
-            log_debug "Copied $file to history"
+    local files
+    files=$(get_history_output_files)
+    for file in $files; do
+        local src="$project_dir/$file"
+        local dest="$history_dir/$file"
+        local base="$HISTORY_BASELINE_DIR/$file"
+        local tmp="$dest.tmp"
+
+        if [[ -f "$src" && -s "$src" ]]; then
+            # If baseline is missing, fallback to full copy
+            if [[ ! -f "$base" ]]; then
+                cp "$src" "$dest"
+                log_debug "Copied $file to history (no baseline)"
+                continue
+            fi
+
+            awk '
+                NR==FNR {
+                    if ($0 != "") seen[$0]=1
+                    next
+                }
+                {
+                    if ($0 != "" && !seen[$0] && !added[$0]++) print $0
+                }
+            ' "$base" "$src" > "$tmp"
+
+            if [[ -s "$tmp" ]]; then
+                mv "$tmp" "$dest"
+                log_debug "Wrote new entries for $file to history"
+            else
+                rm -f "$tmp" "$dest"
+                log_debug "No new entries for $file"
+            fi
         fi
     done
 }
