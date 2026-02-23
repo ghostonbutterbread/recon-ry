@@ -190,6 +190,21 @@ run_recon_project() {
 
     log_info "Stages to run: $stages"
 
+    if [[ "$DIR_ONLY" == "true" ]]; then
+        log_info "Directory fuzzing only (--dir)"
+        execute_stage "dir_enum" "$project_dir" "$domain" "$url"
+        copy_outputs_to_history "$project_dir" "$history_dir"
+        return $?
+    fi
+
+    local dir_enum_in_profile=false
+    for stage in $stages; do
+        if [[ "$stage" == "dir_enum" ]]; then
+            dir_enum_in_profile=true
+            break
+        fi
+    done
+
     # Dry run mode
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "DRY RUN MODE - No tools will be executed"
@@ -217,9 +232,31 @@ run_recon_project() {
     # Execute each stage
     local failed_stages=0
     for stage in $stages; do
+        if [[ "$stage" == "dir_enum" ]]; then
+            # Run directory fuzzing in background after alive_check
+            continue
+        fi
         if ! execute_stage "$stage" "$project_dir" "$domain" "$url"; then
             ((failed_stages++))
             log_error "Stage $stage failed"
+        fi
+
+        if [[ "$stage" == "alive_check" && "$dir_enum_in_profile" == "true" ]]; then
+            if is_stage_enabled "dir_enum"; then
+                log_info "Starting directory enumeration in background (detached)"
+                local bg_dir="$project_dir/.bg_scans"
+                mkdir -p "$bg_dir"
+                local bg_log="$bg_dir/dir_enum.log"
+                local bg_pid_file="$bg_dir/dir_enum.pid"
+                local bg_cmd_file="$bg_dir/dir_enum.cmd"
+
+                local cmd="bash \"$SCRIPT_DIR/scripts/bg_dir_enum.sh\" \"$project_dir\" \"$url\" \"$history_dir\" \"$VERBOSE\""
+                printf "%s\n" "$cmd" > "$bg_cmd_file"
+                nohup setsid bash -c "$cmd" > "$bg_log" 2>&1 < /dev/null &
+                echo $! > "$bg_pid_file"
+            else
+                log_debug "Stage dir_enum is disabled, skipping background run"
+            fi
         fi
 
         # After each stage, copy outputs to history
