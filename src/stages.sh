@@ -232,6 +232,10 @@ run_recon_project() {
     # Execute each stage
     local failed_stages=0
     for stage in $stages; do
+        if [[ "$stage" == "alive_check" ]]; then
+            # Ensure wild.txt is merged into urls.txt before httpx
+            create_global_urls "$project_dir"
+        fi
         if [[ "$stage" == "dir_enum" ]]; then
             # Run directory fuzzing in background after alive_check
             continue

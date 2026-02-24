@@ -18,6 +18,7 @@ declare -A INSTALL_INFO
 # Project-specific rate limits loaded from rate_limit.conf
 declare -A PROJECT_RATE_LIMITS
 RATE_LIMIT_CONF_LOADED=false
+PROJECT_TIMEOUT=""
 
 # Simple YAML parser for our specific format
 parse_yaml() {
@@ -167,6 +168,7 @@ EOF
 load_rate_limit_conf() {
     RATE_LIMIT_CONF_LOADED=false
     PROJECT_RATE_LIMITS=()
+    PROJECT_TIMEOUT=""
 
     if [[ -z "${PROJECT_DIR:-}" ]]; then
         return 0
@@ -188,6 +190,10 @@ load_rate_limit_conf() {
         key="${key//[[:space:]]/}"
         value="${value//[[:space:]]/}"
         [[ -z "$key" ]] && continue
+        if [[ "$key" == "timeout" ]]; then
+            PROJECT_TIMEOUT="$value"
+            continue
+        fi
         PROJECT_RATE_LIMITS["$key"]="$value"
     done < "$conf_file"
 
@@ -361,6 +367,12 @@ print(rate)
 
 # Get default timeout (seconds) from config
 get_default_timeout() {
+    if [[ "$RATE_LIMIT_CONF_LOADED" == "true" ]]; then
+        if [[ -n "$PROJECT_TIMEOUT" ]]; then
+            echo "$PROJECT_TIMEOUT"
+            return
+        fi
+    fi
     echo "$GENERAL_CONFIG_JSON" | python3 -c "
 import sys
 import json

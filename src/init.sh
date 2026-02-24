@@ -84,8 +84,11 @@ _init_generate_rate_limit_conf() {
 import sys, json
 data = json.load(sys.stdin)
 default = data.get('defaults', {}).get('rate_limit', 150)
+timeout = data.get('defaults', {}).get('timeout', 300)
 rl = data.get('rate_limits', {})
 lines = []
+lines.append('timeout=' + str(timeout))
+lines.append('')
 lines.append('default=' + str(default))
 lines.append('')
 for tool, rate in rl.items():
@@ -103,7 +106,7 @@ print('\n'.join(lines))
 #   - If a tool entry is missing or blank, the 'default' value below is used.
 #   - Delete this file entirely to fall back to general.yaml values.
 #
-# Values are requests per second.
+# timeout is seconds per tool (0 = no timeout). Values are requests per second.
 
 $conf_body
 EOF

@@ -200,15 +200,30 @@ run_tool_with_anew() {
     local url="$5"
 
     # Create temp file for tool output
-    local temp_output=$(mktemp)
+    local temp_output=""
+    local keep_partial=false
+    local merged=false
 
-    # Execute tool
-    if execute_tool "$tool" "$input_file" "$temp_output" "$domain" "$url"; then
-        # Use anew to append unique results
+    if [[ "$tool" == "ffuf" || "$tool" == "dirsearch" ]]; then
+        local project_dir
+        project_dir=$(dirname "$output_file")
+        local partial_dir="$project_dir/.partials"
+        mkdir -p "$partial_dir"
+        temp_output="$partial_dir/${tool}.dirs.txt"
+        keep_partial=true
+    else
+        temp_output=$(mktemp)
+    fi
+
+    merge_temp_output() {
+        if [[ "$merged" == "true" ]]; then
+            return
+        fi
+        merged=true
+
         if [[ -s "$temp_output" ]]; then
             local new_count=0
 
-            # Compute count before merge so repeat runs show real new additions.
             if [[ -f "$output_file" ]]; then
                 new_count=$(count_new_entries "$output_file" "$temp_output")
             else
@@ -218,7 +233,6 @@ run_tool_with_anew() {
             if command -v anew &> /dev/null; then
                 cat "$temp_output" | anew "$output_file" > /dev/null
             else
-                # Fallback if anew is not installed
                 cat "$temp_output" >> "$output_file"
                 sort -u "$output_file" -o "$output_file"
                 log_debug "Tool $tool merged output without anew (sort -u fallback)"
@@ -233,12 +247,32 @@ run_tool_with_anew() {
             log_debug "Tool $tool produced no output"
             log_info "Tool $tool added 0 new entries to $(basename "$output_file")"
         fi
-        rm -f "$temp_output"
-        return 0
-    else
-        rm -f "$temp_output"
-        return 1
+
+        if [[ "$keep_partial" == "true" ]]; then
+            : > "$temp_output"
+        else
+            rm -f "$temp_output"
+        fi
+    }
+
+    # Ensure partial results are merged on exit/interrupt
+    trap 'merge_temp_output' EXIT INT TERM
+
+    # Execute tool
+    local exec_ok=true
+    if ! execute_tool "$tool" "$input_file" "$temp_output" "$domain" "$url"; then
+        exec_ok=false
+        log_warning "Tool $tool failed; attempting to merge partial output"
     fi
+
+    # Use anew to append unique results
+    merge_temp_output
+    trap - EXIT INT TERM
+
+    if [[ "$exec_ok" == "true" ]]; then
+        return 0
+    fi
+    return 1
 }
 
 # Run tool without anew (direct output)

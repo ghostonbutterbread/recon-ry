@@ -39,6 +39,7 @@ Commands:
     secrets             Run secret scanning operations
     enable_tools        Interactive TUI to enable/disable tools
     set_stages          Interactive TUI to configure stages
+    selftest            Run lightweight self-test (no external tools)
     update              Update all installed tools
     check               Check tool installation status
 
@@ -50,6 +51,7 @@ Examples:
     $(basename "$0") secrets --help
     $(basename "$0") recon --url example.com --full
     $(basename "$0") enable_tools
+    $(basename "$0") selftest
 EOF
 }
 
@@ -160,6 +162,17 @@ Options:
     --project <dir>     Project directory path (required)
     --kill              Stop all running background scans for project
     -h, --help          Show this help message
+EOF
+}
+
+# Selftest command help
+show_selftest_help() {
+    cat << EOF
+Usage: $(basename "$0") selftest
+
+Description:
+    Runs a lightweight, offline self-test that simulates tool outputs and
+    validates history/baseline behavior. No external tools required.
 EOF
 }
 
@@ -351,6 +364,9 @@ show_command_help() {
         scans)
             show_scans_help
             ;;
+        selftest)
+            show_selftest_help
+            ;;
         *)
             show_usage
             ;;
@@ -375,7 +391,7 @@ parse_args() {
 
     # Check if command is valid
     case "$COMMAND" in
-        init|recon|secrets|enable_tools|set_stages|update|check|scans)
+        init|recon|secrets|enable_tools|set_stages|update|check|scans|selftest)
             # Valid command, continue parsing
             ;;
         *)
@@ -530,6 +546,9 @@ main() {
             else
                 list_bg_scans "$PROJECT_DIR"
             fi
+            ;;
+        selftest)
+            "$SCRIPT_DIR/scripts/self_test.sh"
             ;;
         secrets)
             # Validate required arguments
