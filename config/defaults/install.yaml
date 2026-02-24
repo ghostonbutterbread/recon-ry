@@ -105,10 +105,13 @@ tools:
 
   dirsearch:
     install_method: git
-    install_command: "git clone https://github.com/maurosoria/dirsearch.git ~/tools/dirsearch"
+    install_command: "git clone https://github.com/maurosoria/dirsearch.git $SCRIPT_DIR/tools/dirsearch"
     update_check: "github:maurosoria/dirsearch"
     binary_name: dirsearch
-    binary_path: "~/tools/dirsearch/dirsearch.py"
+    binary_path: "tools/dirsearch/dirsearch.py"
+    venv: true
+    venv_path: "venvs/dirsearch"
+    venv_requirements: "tools/dirsearch/requirements.txt"
 
   trufflehog:
     install_method: apt
@@ -118,10 +121,13 @@ tools:
 
   secret_finder:
     install_method: git
-    install_command: "git clone https://github.com/m4ll0k/SecretFinder.git $SCRIPT_DIR/scripts/SecretFinder && pip3 install -r $SCRIPT_DIR/scripts/SecretFinder/requirements.txt"
+    install_command: "git clone https://github.com/m4ll0k/SecretFinder.git $SCRIPT_DIR/tools/SecretFinder"
     update_check: "github:m4ll0k/SecretFinder"
     binary_name: SecretFinder.py
-    binary_path: "scripts/SecretFinder/SecretFinder.py"
+    binary_path: "tools/SecretFinder/SecretFinder.py"
+    venv: true
+    venv_path: "venvs/secret_finder"
+    venv_requirements: "tools/SecretFinder/requirements.txt"
 
   anew:
     install_method: go
@@ -135,6 +141,10 @@ wordlists:
     source: "https://github.com/six2dez/OneListForAll"
     path: "wordlists/OneListForAll"
     description: "Comprehensive wordlist collection for directory and parameter fuzzing"
+  nuclei_templates:
+    source: "https://github.com/projectdiscovery/nuclei-templates"
+    path: "wordlists/nuclei-templates"
+    description: "ProjectDiscovery nuclei templates"
 
 # System dependencies
 dependencies:
