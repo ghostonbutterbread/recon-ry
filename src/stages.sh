@@ -223,8 +223,8 @@ run_recon_project() {
     fi
 
     # Create history directory
-    local timestamp=$(date +"%Y%m%d_%H%M%S")
-    local history_dir="$project_dir/history/$timestamp"
+    local date_stamp=$(date +"%-m-%-d-%Y")
+    local history_dir="$project_dir/history/$date_stamp"
     mkdir -p "$history_dir"
     log_info "History directory: $history_dir"
     init_history_baseline "$project_dir" "$history_dir"

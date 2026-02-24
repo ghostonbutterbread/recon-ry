@@ -31,6 +31,7 @@ init_history_baseline() {
     local history_dir="$2"
 
     HISTORY_BASELINE_DIR="$history_dir/.baseline"
+    rm -rf "$HISTORY_BASELINE_DIR"
     mkdir -p "$HISTORY_BASELINE_DIR"
 
     log_debug "Initializing history baseline: $HISTORY_BASELINE_DIR"
@@ -65,7 +66,7 @@ copy_outputs_to_history() {
         if [[ -f "$src" && -s "$src" ]]; then
             # If baseline is missing, fallback to full copy
             if [[ ! -f "$base" ]]; then
-                cp "$src" "$dest"
+                merge_with_anew "$src" "$dest"
                 log_debug "Copied $file to history (no baseline)"
                 continue
             fi
@@ -81,10 +82,11 @@ copy_outputs_to_history() {
             ' "$base" "$src" > "$tmp"
 
             if [[ -s "$tmp" ]]; then
-                mv "$tmp" "$dest"
-                log_debug "Wrote new entries for $file to history"
+                merge_with_anew "$tmp" "$dest"
+                rm -f "$tmp"
+                log_debug "Appended new entries for $file to history"
             else
-                rm -f "$tmp" "$dest"
+                rm -f "$tmp"
                 log_debug "No new entries for $file"
             fi
         fi

@@ -14,10 +14,10 @@ tools:
   unclutter_jsfiles: true
   ffuf: true
   dirsearch: true
-  nuclei: true
+  nuclei: false
   trufflehog: false
   secret_finder: true
-  dork_scan: true
+  dork_scan: false
 stages:
   subdomain_enum: true
   url_discovery: true
