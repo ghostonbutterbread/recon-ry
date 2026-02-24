@@ -32,6 +32,7 @@ Thumbs.db
 # Project specific - don't commit actual scan results
 *.txt
 history/
+.partials/
 
 # But keep empty template files
 !config/*.txt
