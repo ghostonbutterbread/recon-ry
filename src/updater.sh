@@ -67,11 +67,55 @@ install_tool() {
             ;;
     esac
 
-    if [[ $? -eq 0 ]]; then
-        log_success "$tool installed successfully"
-        return 0
-    else
+    if [[ $? -ne 0 ]]; then
         log_error "Failed to install $tool"
+        return 1
+    fi
+
+    if [[ "$tool" == "nuclei" ]]; then
+        ensure_wordlist_installed "nuclei_templates"
+    fi
+
+    if ! setup_tool_venv "$tool"; then
+        log_error "Failed to set up venv for $tool"
+        return 1
+    fi
+
+    log_success "$tool installed successfully"
+    return 0
+}
+
+# Ensure a specific wordlist repository is installed
+ensure_wordlist_installed() {
+    local name="$1"
+
+    local source path full_path
+    source=$(echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data.get('wordlists', {}).get('$name', {}).get('source', ''))")
+    path=$(echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(data.get('wordlists', {}).get('$name', {}).get('path', ''))")
+
+    if [[ -z "$source" || -z "$path" ]]; then
+        log_warning "Wordlist $name not configured"
+        return 0
+    fi
+
+    full_path="$SCRIPT_DIR/$path"
+
+    if [[ -d "$full_path/.git" ]]; then
+        return 0
+    fi
+
+    log_info "Installing wordlist $name from $source..."
+    mkdir -p "$(dirname "$full_path")"
+    if git clone "$source" "$full_path"; then
+        log_success "Wordlist $name installed"
+    else
+        log_error "Failed to install wordlist $name"
         return 1
     fi
 }
@@ -114,12 +158,60 @@ update_tool() {
                 log_warning "$tool not installed via git, reinstalling"
                 install_tool "$tool"
             fi
+            setup_tool_venv "$tool"
             ;;
         *)
             log_warning "Update not supported for install method: $install_method"
             return 1
             ;;
     esac
+}
+
+# Set up Python virtualenv for a tool (if configured)
+setup_tool_venv() {
+    local tool="$1"
+
+    local venv_enabled
+    venv_enabled=$(get_install_info "$tool" "venv" | tr '[:upper:]' '[:lower:]')
+    local venv_path
+    venv_path=$(get_install_info "$tool" "venv_path")
+
+    if [[ "$venv_enabled" != "true" && -z "$venv_path" ]]; then
+        return 0
+    fi
+
+    if [[ -z "$venv_path" ]]; then
+        venv_path="venvs/$tool"
+    fi
+
+    venv_path="${venv_path/#\~/$HOME}"
+    if [[ "$venv_path" != /* ]]; then
+        venv_path="$SCRIPT_DIR/$venv_path"
+    fi
+
+    mkdir -p "$(dirname "$venv_path")"
+
+    if [[ ! -x "$venv_path/bin/python" ]]; then
+        log_info "Creating venv for $tool..."
+        python3 -m venv "$venv_path" || return 1
+    fi
+
+    local req_path
+    req_path=$(get_install_info "$tool" "venv_requirements")
+    if [[ -n "$req_path" ]]; then
+        req_path="${req_path/#\~/$HOME}"
+        if [[ "$req_path" != /* ]]; then
+            req_path="$SCRIPT_DIR/$req_path"
+        fi
+        if [[ -f "$req_path" ]]; then
+            log_info "Installing $tool requirements into venv..."
+            "$venv_path/bin/pip" install -r "$req_path"
+        else
+            log_warning "Requirements file not found for $tool: $req_path"
+        fi
+    fi
+
+    return 0
 }
 
 # Check tool status
@@ -344,6 +436,32 @@ print(data.get('wordlists', {}).get('$name', {}).get('path', ''))")
     done
 }
 
+# Set up venvs for all tools that request them
+setup_all_venvs() {
+    log_info "Setting up tool venvs..."
+
+    local tools
+    tools=$(echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for name in data.get('tools', {}).keys():
+    print(name)
+")
+
+    if [[ -z "$tools" ]]; then
+        log_verbose "No tools found in install config"
+        return 0
+    fi
+
+    for tool in $tools; do
+        if is_tool_installed "$tool"; then
+            setup_tool_venv "$tool"
+        else
+            log_verbose "Skipping venv for $tool (not installed)"
+        fi
+    done
+}
+
 # Main update function
 run_update() {
     log_info "Running update module..."
@@ -363,6 +481,10 @@ run_update() {
 
     # Update wordlist repositories
     update_wordlists
+    echo ""
+
+    # Ensure venvs are created and requirements installed
+    setup_all_venvs
     echo ""
 
     log_success "Update complete!"

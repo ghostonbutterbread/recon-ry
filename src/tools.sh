@@ -38,7 +38,7 @@ check_tool_exists() {
                 if [[ "$binary_path" != /* ]]; then
                     binary_path="$SCRIPT_DIR/$binary_path"
                 fi
-                [[ -f "$binary_path" && -x "$binary_path" ]]
+                [[ -f "$binary_path" ]]
             else
                 # Fallback to binary name check
                 local binary_name=$(get_install_info "$tool" "binary_name")
@@ -95,7 +95,41 @@ execute_tool() {
     command="${command//\{\{URL\}\}/$url}"
     command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
     command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
-    command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/scripts/SecretFinder}}"
+    command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
+    # Per-tool directories and virtualenvs
+    if [[ "$tool" == "dirsearch" ]]; then
+        local dirsearch_path
+        dirsearch_path=$(get_install_info "$tool" "binary_path")
+        dirsearch_path="${dirsearch_path/#\~/$HOME}"
+        if [[ -n "$dirsearch_path" && "$dirsearch_path" != /* ]]; then
+            dirsearch_path="$SCRIPT_DIR/$dirsearch_path"
+        fi
+        local dirsearch_dir
+        dirsearch_dir=$(dirname "$dirsearch_path")
+        command="${command//\{\{DIRSEARCH_DIR\}\}/$dirsearch_dir}"
+    fi
+    local venv_enabled
+    venv_enabled=$(get_install_info "$tool" "venv" | tr '[:upper:]' '[:lower:]')
+    local venv_path
+    venv_path=$(get_install_info "$tool" "venv_path")
+
+    if [[ "$venv_enabled" == "true" && -z "$venv_path" ]]; then
+        venv_path="venvs/$tool"
+    fi
+
+    if [[ -n "$venv_path" ]]; then
+        venv_path="${venv_path/#\~/$HOME}"
+        if [[ "$venv_path" != /* ]]; then
+            venv_path="$SCRIPT_DIR/$venv_path"
+        fi
+        if [[ ! -x "$venv_path/bin/python" ]]; then
+            log_warning "Venv missing for $tool: $venv_path (run update to create it)"
+            return 1
+        fi
+        command="${command//\{\{VENV_PYTHON\}\}/$venv_path/bin/python}"
+    else
+        command="${command//\{\{VENV_PYTHON\}\}/python3}"
+    fi
     command="${command//\{\{RATE_LIMIT\}\}/$rate_limit}"
 
     log_verbose "Running: $tool"

@@ -185,14 +185,14 @@ tools:
 
   dirsearch:
     type: binary
-    command: "dirsearch -l {{INPUT}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --max-rate={{RATE_LIMIT}} --format=simple -o {{OUTPUT}}"
+    command: "{{VENV_PYTHON}} {{DIRSEARCH_DIR}}/dirsearch.py -l {{INPUT}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --max-rate={{RATE_LIMIT}} --format=simple -o {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [dirs.txt]
 
   # Secret Scanning
   nuclei:
     type: binary
-    command: "nuclei -list {{INPUT}} -t ~/nuclei-templates/exposures/ -silent -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
+    command: "nuclei -list {{INPUT}} -t {{RECON_DIR}}/wordlists/nuclei-templates/exposures/ -silent -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
     required_files: [urls.txt]
     outputs: [secrets.txt]
 
@@ -204,7 +204,7 @@ tools:
 
   secret_finder:
     type: script
-    command: "cat {{INPUT}} | while read url; do python3 {{SECRETFINDER_DIR}}/SecretFinder.py -i \"$url\" -o cli >> {{OUTPUT}}; done"
+    command: "cat {{INPUT}} | while read url; do {{VENV_PYTHON}} {{SECRETFINDER_DIR}}/SecretFinder.py -i \"$url\" -o cli >> {{OUTPUT}}; done"
     required_files: [jsfiles.txt]
     outputs: [secrets.txt]
 

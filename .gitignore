@@ -17,6 +17,7 @@ __pycache__/
 venv/
 env/
 ENV/
+venvs/
 
 # IDE
 .vscode/
@@ -38,5 +39,5 @@ history/
 config/state.yaml
 
 # Externally cloned tool/wordlist repositories (managed via git pull in updater)
-scripts/SecretFinder/
+tools/
 wordlists/
