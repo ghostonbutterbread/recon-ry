@@ -185,7 +185,7 @@ tools:
 
   dirsearch:
     type: binary
-    command: "{{VENV_PYTHON}} {{DIRSEARCH_DIR}}/dirsearch.py -l {{INPUT}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --max-rate={{RATE_LIMIT}} --format=simple -o {{OUTPUT}}"
+    command: "{{VENV_PYTHON}} {{DIRSEARCH_DIR}}/dirsearch.py -l {{INPUT}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --max-rate={{RATE_LIMIT}} -format=simple -o {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [dirs.txt]
 
