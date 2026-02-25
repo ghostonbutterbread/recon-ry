@@ -25,6 +25,13 @@ print(' '.join(sorted(outputs)))
     fi
 }
 
+get_dirs_status_files() {
+    local project_dir="$1"
+    if [[ -d "$project_dir/dirs_status" ]]; then
+        find "$project_dir/dirs_status" -maxdepth 1 -type f -name '*.txt' -printf 'dirs_status/%f\n' | sort
+    fi
+}
+
 # Initialize baseline for history deltas (snapshot of current project outputs)
 init_history_baseline() {
     local project_dir="$1"
@@ -44,6 +51,19 @@ init_history_baseline() {
         else
             # Ensure baseline exists as empty file for consistent diffing
             : > "$HISTORY_BASELINE_DIR/$file"
+        fi
+    done
+
+    local status_files
+    status_files=$(get_dirs_status_files "$project_dir")
+    for file in $status_files; do
+        local src="$project_dir/$file"
+        local base="$HISTORY_BASELINE_DIR/$file"
+        mkdir -p "$(dirname "$base")"
+        if [[ -f "$src" && -s "$src" ]]; then
+            cp "$src" "$base"
+        else
+            : > "$base"
         fi
     done
 }
@@ -71,6 +91,44 @@ copy_outputs_to_history() {
                 continue
             fi
 
+            awk '
+                NR==FNR {
+                    if ($0 != "") seen[$0]=1
+                    next
+                }
+                {
+                    if ($0 != "" && !seen[$0] && !added[$0]++) print $0
+                }
+            ' "$base" "$src" > "$tmp"
+
+            if [[ -s "$tmp" ]]; then
+                merge_with_anew "$tmp" "$dest"
+                rm -f "$tmp"
+                log_debug "Appended new entries for $file to history"
+            else
+                rm -f "$tmp"
+                log_debug "No new entries for $file"
+            fi
+        fi
+    done
+
+    local status_files
+    status_files=$(get_dirs_status_files "$project_dir")
+    for file in $status_files; do
+        local src="$project_dir/$file"
+        local dest="$history_dir/$file"
+        local base="$HISTORY_BASELINE_DIR/$file"
+        local tmp="$dest.tmp"
+
+        if [[ -f "$src" && -s "$src" ]]; then
+            if [[ ! -f "$base" ]]; then
+                mkdir -p "$(dirname "$dest")"
+                merge_with_anew "$src" "$dest"
+                log_debug "Copied $file to history (no baseline)"
+                continue
+            fi
+
+            mkdir -p "$(dirname "$dest")"
             awk '
                 NR==FNR {
                     if ($0 != "") seen[$0]=1
