@@ -337,7 +337,7 @@ stages:
    - gau (with parameters) → uro (deduplication)
 
 5. **Directory Enumeration** → `dirs.txt`
-   - ffuf, dirsearch
+   - ffuf
 
 6. **Secret Scanning** → `secrets.txt`
    - nuclei, trufflehog

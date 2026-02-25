@@ -31,7 +31,6 @@ All notable changes to this project will be documented in this file.
 - hakrawler - Web crawler
 - uro - URL deduplication
 - ffuf - Fuzzing
-- dirsearch - Directory enumeration
 - trufflehog - Secret scanning
 - anew - Unique line filtering
 

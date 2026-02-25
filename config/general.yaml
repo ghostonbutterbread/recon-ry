@@ -24,7 +24,6 @@ rate_limits:
   httpx: 150        # HTTP probing rate
   nuclei: 150       # Vulnerability scanning rate
   ffuf: 150         # Fuzzing rate
-  dirsearch: 150    # Directory brute-force rate
 
 # Stage configuration
 stages:
@@ -70,7 +69,6 @@ stages:
     description: "Directory enumeration"
     tools:
       - ffuf
-      - dirsearch
 
   secret_scan:
     parallel: false
@@ -183,11 +181,6 @@ tools:
     required_files: [alive.txt]
     outputs: [dirs.txt]
 
-  dirsearch:
-    type: binary
-    command: "{{VENV_PYTHON}} {{DIRSEARCH_DIR}}/dirsearch.py -l {{INPUT}} -e php,asp,aspx,jsp,html,zip,jar -t 50 --max-rate={{RATE_LIMIT}} -format=simple -o {{OUTPUT}}"
-    required_files: [alive.txt]
-    outputs: [dirs.txt]
 
   # Secret Scanning
   nuclei:
