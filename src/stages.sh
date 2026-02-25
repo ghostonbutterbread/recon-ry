@@ -205,6 +205,48 @@ run_recon_project() {
         fi
     done
 
+    # Detect available terminal emulator for background dir_enum
+    detect_terminal() {
+        if command -v gnome-terminal &> /dev/null; then
+            echo "gnome-terminal"
+        elif command -v konsole &> /dev/null; then
+            echo "konsole"
+        elif command -v alacritty &> /dev/null; then
+            echo "alacritty"
+        elif command -v kitty &> /dev/null; then
+            echo "kitty"
+        elif command -v xterm &> /dev/null; then
+            echo "xterm"
+        else
+            echo ""
+        fi
+    }
+
+    spawn_in_terminal() {
+        local term="$1"
+        local cmd="$2"
+        case "$term" in
+            gnome-terminal)
+                gnome-terminal -- bash -c "$cmd"
+                ;;
+            konsole)
+                konsole -e bash -c "$cmd"
+                ;;
+            alacritty)
+                alacritty -e bash -c "$cmd"
+                ;;
+            kitty)
+                kitty bash -c "$cmd"
+                ;;
+            xterm)
+                xterm -e bash -c "$cmd"
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    }
+
     # Dry run mode
     if [[ "$DRY_RUN" == "true" ]]; then
         log_info "DRY RUN MODE - No tools will be executed"
@@ -247,17 +289,21 @@ run_recon_project() {
 
         if [[ "$stage" == "alive_check" && "$dir_enum_in_profile" == "true" ]]; then
             if is_stage_enabled "dir_enum"; then
-                log_info "Starting directory enumeration in background (detached)"
-                local bg_dir="$project_dir/.bg_scans"
-                mkdir -p "$bg_dir"
-                local bg_log="$bg_dir/dir_enum.log"
-                local bg_pid_file="$bg_dir/dir_enum.pid"
-                local bg_cmd_file="$bg_dir/dir_enum.cmd"
-
-                local cmd="bash \"$SCRIPT_DIR/scripts/bg_dir_enum.sh\" \"$project_dir\" \"$url\" \"$history_dir\" \"$VERBOSE\""
-                printf "%s\n" "$cmd" > "$bg_cmd_file"
-                nohup setsid bash -c "$cmd" > "$bg_log" 2>&1 < /dev/null &
-                echo $! > "$bg_pid_file"
+                local term
+                term=$(detect_terminal)
+                if [[ -n "$term" ]]; then
+                    log_info "Starting directory enumeration in new terminal ($term)"
+                    local bg_cmd="cd \"$SCRIPT_DIR\"; bash \"$SCRIPT_DIR/scripts/bg_dir_enum.sh\" \"$project_dir\" \"$url\" \"$history_dir\" \"$VERBOSE\"; echo; echo 'Dir enum complete. Press Enter to close.'; read -r"
+                    spawn_in_terminal "$term" "$bg_cmd" || {
+                        log_warning "Failed to open terminal ($term), running dir_enum in foreground"
+                        execute_stage "dir_enum" "$project_dir" "$domain" "$url"
+                        copy_outputs_to_history "$project_dir" "$history_dir"
+                    }
+                else
+                    log_warning "No terminal emulator found, running dir_enum in foreground"
+                    execute_stage "dir_enum" "$project_dir" "$domain" "$url"
+                    copy_outputs_to_history "$project_dir" "$history_dir"
+                fi
             else
                 log_debug "Stage dir_enum is disabled, skipping background run"
             fi

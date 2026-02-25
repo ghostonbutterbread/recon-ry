@@ -1,0 +1,17 @@
+# Tool payload configuration
+#
+# Each tool can define multiple payloads (command overrides).
+# The active payload is selected via the TUI.
+#
+# If a tool has no payloads configured, its command in general.yaml is used.
+
+payloads:
+  ffuf:
+    active: default
+    items:
+      default:
+        description: "Default ffuf directory brute-force"
+        command: "ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2 -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} -o {{OUTPUT}}"
+      dirsearch_like:
+        description: "Dirsearch-like extensions and wordlist"
+        command: "ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2 -e php,asp,aspx,jsp,html,zip,jar -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} -o {{OUTPUT}}"

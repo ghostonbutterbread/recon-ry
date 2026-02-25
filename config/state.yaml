@@ -13,7 +13,6 @@ tools:
   js_files: true
   unclutter_jsfiles: true
   ffuf: true
-  dirsearch: true
   nuclei: false
   trufflehog: false
   secret_finder: true

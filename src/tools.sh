@@ -97,17 +97,6 @@ execute_tool() {
     command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
     command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
     # Per-tool directories and virtualenvs
-    if [[ "$tool" == "dirsearch" ]]; then
-        local dirsearch_path
-        dirsearch_path=$(get_install_info "$tool" "binary_path")
-        dirsearch_path="${dirsearch_path/#\~/$HOME}"
-        if [[ -n "$dirsearch_path" && "$dirsearch_path" != /* ]]; then
-            dirsearch_path="$SCRIPT_DIR/$dirsearch_path"
-        fi
-        local dirsearch_dir
-        dirsearch_dir=$(dirname "$dirsearch_path")
-        command="${command//\{\{DIRSEARCH_DIR\}\}/$dirsearch_dir}"
-    fi
     local venv_enabled
     venv_enabled=$(get_install_info "$tool" "venv" | tr '[:upper:]' '[:lower:]')
     local venv_path
@@ -131,6 +120,26 @@ execute_tool() {
         command="${command//\{\{VENV_PYTHON\}\}/python3}"
     fi
     command="${command//\{\{RATE_LIMIT\}\}/$rate_limit}"
+
+    # Apply payload override if configured
+    local payload_command
+    payload_command=$(get_payload_command "$tool")
+    if [[ -n "$payload_command" ]]; then
+        command="$payload_command"
+        command="${command//\{\{INPUT\}\}/$input_file}"
+        command="${command//\{\{OUTPUT\}\}/$output_file}"
+        command="${command//\{\{DOMAIN\}\}/$domain}"
+        command="${command//\{\{URL\}\}/$url}"
+        command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
+        command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
+        command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
+        if [[ -n "$venv_path" ]]; then
+            command="${command//\{\{VENV_PYTHON\}\}/$venv_path/bin/python}"
+        else
+            command="${command//\{\{VENV_PYTHON\}\}/python3}"
+        fi
+        command="${command//\{\{RATE_LIMIT\}\}/$rate_limit}"
+    fi
 
     log_verbose "Running: $tool"
     log_debug "Command: $command"
@@ -204,7 +213,7 @@ run_tool_with_anew() {
     local keep_partial=false
     local merged=false
 
-    if [[ "$tool" == "ffuf" || "$tool" == "dirsearch" ]]; then
+    if [[ "$tool" == "ffuf" ]]; then
         local project_dir
         project_dir=$(dirname "$output_file")
         local partial_dir="$project_dir/.partials"

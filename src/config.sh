@@ -8,6 +8,7 @@ GENERAL_CONFIG="$CONFIG_DIR/general.yaml"
 PROFILES_CONFIG="$CONFIG_DIR/profiles.yaml"
 INSTALL_CONFIG="$CONFIG_DIR/install.yaml"
 STATE_CONFIG="$CONFIG_DIR/state.yaml"
+PAYLOADS_CONFIG="$CONFIG_DIR/payloads.yaml"
 
 # Associative arrays to store config
 declare -A STAGES
@@ -104,6 +105,13 @@ load_profiles_config() {
     PROFILES_CONFIG_JSON=$(parse_yaml "$PROFILES_CONFIG")
 }
 
+# Load payloads config
+load_payloads_config() {
+    log_debug "Loading payloads config from $PAYLOADS_CONFIG"
+    ensure_config_file "$PAYLOADS_CONFIG" "payloads.yaml"
+    PAYLOADS_CONFIG_JSON=$(parse_yaml "$PAYLOADS_CONFIG")
+}
+
 # Load install config
 load_install_config() {
     log_debug "Loading install config from $INSTALL_CONFIG"
@@ -145,7 +153,6 @@ tools:
   js_files: true
   unclutter_jsfiles: true
   ffuf: true
-  dirsearch: true
   nuclei_secrets: true
   trufflehog: true
   secret_finder: true
@@ -207,6 +214,7 @@ load_all_configs() {
     load_profiles_config
     load_install_config
     load_state_config
+    load_payloads_config
     load_rate_limit_conf
 }
 
@@ -380,6 +388,57 @@ data = json.load(sys.stdin)
 print(data.get('defaults', {}).get('timeout', 300))
 "
 }
+
+# Get active payload command for a tool (if configured)
+get_payload_command() {
+    local tool="$1"
+    if [[ -z "${PAYLOADS_CONFIG_JSON:-}" ]]; then
+        echo ""
+        return
+    fi
+    echo "$PAYLOADS_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+tool_cfg = data.get('payloads', {}).get('$tool', {})
+active = tool_cfg.get('active')
+items = tool_cfg.get('items', {})
+cmd = ''
+if active and active in items:
+    cmd = items.get(active, {}).get('command', '') or ''
+print(cmd)
+"
+}
+
+# Get payload names for a tool
+get_payload_names() {
+    local tool="$1"
+    if [[ -z "${PAYLOADS_CONFIG_JSON:-}" ]]; then
+        echo ""
+        return
+    fi
+    echo "$PAYLOADS_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+items = data.get('payloads', {}).get('$tool', {}).get('items', {})
+print(' '.join(items.keys()))
+"
+}
+
+# Get active payload name for a tool
+get_active_payload_name() {
+    local tool="$1"
+    if [[ -z "${PAYLOADS_CONFIG_JSON:-}" ]]; then
+        echo ""
+        return
+    fi
+    echo "$PAYLOADS_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+tool_cfg = data.get('payloads', {}).get('$tool', {})
+print(tool_cfg.get('active', '') or '')
+"
+}
+
 
 # Update tool enabled status (writes to state.yaml)
 update_tool_status() {

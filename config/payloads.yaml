@@ -1,0 +1,61 @@
+payloads:
+  ffuf:
+    active: default
+    items:
+      default:
+        description: Default ffuf directory brute-force
+        command: ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2
+          -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} -o {{OUTPUT}}
+      dirsearch_like:
+        description: Dirsearch-like extensions and wordlist
+        command: ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2
+          -e php,asp,aspx,jsp,html,zip,jar -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}}
+          -o {{OUTPUT}}
+  assetfinder:
+    items:
+      default:
+        description: Default command from general.yaml
+        command: assetfinder --subs-only {{DOMAIN}}
+      test:
+        description: gg
+        command: ltlertleltinta
+    active: default
+  katana:
+    items:
+      default:
+        description: Default command from general.yaml
+        command: katana -list {{INPUT}} -d 3 -silent -jc -kf all -rl {{RATE_LIMIT}}
+          -o {{OUTPUT}}
+    active: default
+  amass:
+    items:
+      default:
+        description: Default command from general.yaml
+        command: amass enum -passive -d {{DOMAIN}} -rf {{RATE_LIMIT}} -silent
+    active: default
+  secret_finder:
+    items:
+      default:
+        description: Default command from general.yaml
+        command: cat {{INPUT}} | while read url; do {{VENV_PYTHON}} {{SECRETFINDER_DIR}}/SecretFinder.py
+          -i "$url" -o cli >> {{OUTPUT}}; done
+    active: default
+  js_files:
+    items:
+      default:
+        description: Default command from general.yaml
+        command: cat {{INPUT}} | grep '.js$' > {{OUTPUT}}
+    active: default
+  crt_sh:
+    items:
+      default:
+        description: Default command from general.yaml
+        command: '{{RECON_DIR}}/scripts/crt_sh.sh {{DOMAIN}} {{OUTPUT}} {{PROJECT_DIR}}/urls.txt'
+    active: default
+  nuclei:
+    items:
+      default:
+        description: Default command from general.yaml
+        command: nuclei -list {{INPUT}} -t {{RECON_DIR}}/wordlists/nuclei-templates/exposures/
+          -silent -rl {{RATE_LIMIT}} -o {{OUTPUT}}
+    active: default
