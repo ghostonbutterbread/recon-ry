@@ -46,11 +46,13 @@ init_history_baseline() {
     local files
     files=$(get_history_output_files)
     for file in $files; do
+        local base="$HISTORY_BASELINE_DIR/$file"
+        mkdir -p "$(dirname "$base")"
         if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
-            cp "$project_dir/$file" "$HISTORY_BASELINE_DIR/$file"
+            cp "$project_dir/$file" "$base"
         else
             # Ensure baseline exists as empty file for consistent diffing
-            : > "$HISTORY_BASELINE_DIR/$file"
+            : > "$base"
         fi
     done
 
