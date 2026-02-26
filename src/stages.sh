@@ -54,16 +54,22 @@ execute_stage() {
         return 0
     fi
 
-    # Special check for subdomain_enum: all tools require a domain, skip if none provided
+    # Special check for subdomain_enum: tools need a domain; infer from wild.txt if URL not provided
     if [[ "$stage" == "subdomain_enum" ]]; then
         if [[ -z "$domain" ]]; then
             if [[ -s "$project_dir/wild.txt" ]]; then
-                log_info "Stage subdomain_enum skipped: no URL provided, using existing wild.txt"
+                domain=$(head -n 1 "$project_dir/wild.txt" | sed -e 's|^https\?://||' -e 's|/.*||')
+                if [[ -n "$domain" ]]; then
+                    log_info "Subdomain enum domain inferred from wild.txt: $domain"
+                else
+                    log_warning "Stage subdomain_enum skipped: unable to infer domain from wild.txt"
+                    return 0
+                fi
             else
                 log_warning "Stage subdomain_enum skipped: no URL provided and wild.txt not found"
                 log_info "Subdomain enumeration requires --url to be specified"
+                return 0
             fi
-            return 0
         fi
     fi
 
@@ -213,12 +219,7 @@ run_recon_project() {
     mkdir -p "$temp_dir"
 
     if [[ -n "$url" ]]; then
-        if echo " $stages " | grep -q " alive_check "; then
-            if [[ ! -s "$project_dir/urls.txt" ]]; then
-                printf '%s\n' "$url" > "$project_dir/urls.txt"
-                log_info "Seeded urls.txt for alive_check from --url"
-            fi
-        fi
+        printf '%s\n' "$url" > "$temp_dir/url_seed.txt"
     fi
 
     if [[ "$DIR_ONLY" == "true" ]]; then
@@ -378,9 +379,7 @@ run_recon_url_only() {
     local stages=$(get_profile_stages "$profile")
 
     if [[ -n "$url" ]]; then
-        if echo " $stages " | grep -q " alive_check "; then
-            printf '%s\n' "$url" > "$temp_dir/urls.txt"
-        fi
+        printf '%s\n' "$url" > "$temp_dir/url_seed.txt"
     fi
 
     # Execute stages

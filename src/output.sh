@@ -186,11 +186,15 @@ create_global_urls() {
     local project_dir="$1"
     local temp_dir="$project_dir/.tmp_run"
     local global_urls="$temp_dir/urls.txt"
+    local seed_url="$temp_dir/url_seed.txt"
 
     log_debug "Creating global URLs file (temp)"
     mkdir -p "$temp_dir"
 
     : > "$global_urls"
+    if [[ -f "$seed_url" && -s "$seed_url" ]]; then
+        merge_with_anew "$seed_url" "$global_urls"
+    fi
     if [[ -f "$project_dir/urls.txt" && -s "$project_dir/urls.txt" ]]; then
         merge_with_anew "$project_dir/urls.txt" "$global_urls"
     fi
