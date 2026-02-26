@@ -225,7 +225,7 @@ run_tool_with_anew() {
     fi
 
     merge_temp_output() {
-        if [[ "$merged" == "true" ]]; then
+        if [[ "${merged:-false}" == "true" ]]; then
             return
         fi
         merged=true
@@ -267,6 +267,50 @@ run_tool_with_anew() {
     # Ensure partial results are merged on exit/interrupt
     trap 'merge_temp_output' EXIT INT TERM
 
+    parse_ffuf_json() {
+        local json_file="$1"
+        local out_dir="$2"
+        python3 - "$json_file" "$out_dir" << 'PY'
+import json, os, sys
+
+json_file, out_dir = sys.argv[1], sys.argv[2]
+try:
+    with open(json_file, "r") as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+
+results = data.get("results", []) or []
+urls = []
+by_status = {}
+
+for r in results:
+    url = r.get("url") or ""
+    status = r.get("status", None)
+    if url:
+        urls.append(url)
+        if status is not None:
+            by_status.setdefault(str(status), []).append(url)
+
+os.makedirs(out_dir, exist_ok=True)
+
+def write_unique(path, items):
+    seen = set()
+    out = []
+    for u in items:
+        if u not in seen:
+            seen.add(u)
+            out.append(u)
+    with open(path, "w") as f:
+        if out:
+            f.write("\n".join(out) + "\n")
+
+write_unique(os.path.join(out_dir, "urls.txt"), urls)
+for code, items in by_status.items():
+    write_unique(os.path.join(out_dir, f"{code}.txt"), items)
+PY
+    }
+
     # Execute tool
     local exec_ok=true
     if ! execute_tool "$tool" "$input_file" "$temp_output" "$domain" "$url"; then
@@ -275,7 +319,75 @@ run_tool_with_anew() {
     fi
 
     # Use anew to append unique results
-    merge_temp_output
+    if [[ "$tool" == "ffuf" ]]; then
+        local project_dir
+        project_dir=$(dirname "$output_file")
+        local parsed_dir
+        parsed_dir=$(mktemp -d)
+        parse_ffuf_json "$temp_output" "$parsed_dir"
+
+        if [[ -s "$parsed_dir/urls.txt" ]]; then
+            local new_count=0
+            if [[ -f "$output_file" ]]; then
+                new_count=$(count_new_entries "$output_file" "$parsed_dir/urls.txt")
+            else
+                new_count=$(awk 'NF { if (!seen[$0]++) c++ } END { print c+0 }' "$parsed_dir/urls.txt")
+            fi
+            if command -v anew &> /dev/null; then
+                cat "$parsed_dir/urls.txt" | anew "$output_file" > /dev/null
+            else
+                cat "$parsed_dir/urls.txt" >> "$output_file"
+                sort -u "$output_file" -o "$output_file"
+                log_debug "Tool $tool merged output without anew (sort -u fallback)"
+            fi
+            if [[ $new_count -gt 0 ]]; then
+                log_success "Tool $tool added $new_count new entries to $(basename "$output_file")"
+            else
+                log_info "Tool $tool added 0 new entries to $(basename "$output_file")"
+            fi
+        else
+            log_debug "Tool $tool produced no output"
+            log_info "Tool $tool added 0 new entries to $(basename "$output_file")"
+        fi
+
+        local status_dir="$project_dir/dirs_status"
+        mkdir -p "$status_dir"
+        for status_file in "$parsed_dir"/*.txt; do
+            local base
+            base=$(basename "$status_file")
+            if [[ "$base" == "urls.txt" ]]; then
+                continue
+            fi
+            if [[ -s "$status_file" ]]; then
+                local dest="$status_dir/$base"
+                local status_new=0
+                if [[ -f "$dest" ]]; then
+                    status_new=$(count_new_entries "$dest" "$status_file")
+                else
+                    status_new=$(awk 'NF { if (!seen[$0]++) c++ } END { print c+0 }' "$status_file")
+                fi
+                if command -v anew &> /dev/null; then
+                    cat "$status_file" | anew "$dest" > /dev/null
+                else
+                    cat "$status_file" >> "$dest"
+                    sort -u "$dest" -o "$dest"
+                fi
+                if [[ $status_new -gt 0 ]]; then
+                    log_success "ffuf added $status_new new entries to dirs_status/$base"
+                else
+                    log_info "ffuf added 0 new entries to dirs_status/$base"
+                fi
+            fi
+        done
+
+        # Remove dirs.txt after status split (keep status files as canonical output)
+        rm -f "$output_file"
+
+        rm -rf "$parsed_dir"
+        merge_temp_output
+    else
+        merge_temp_output
+    fi
     trap - EXIT INT TERM
 
     if [[ "$exec_ok" == "true" ]]; then
