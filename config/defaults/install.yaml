@@ -49,6 +49,18 @@ tools:
     update_check: "github:projectdiscovery/httpx"
     binary_name: httpx
 
+  eyewitness:
+    install_method: git
+    install_command: "git clone https://github.com/RedSiege/EyeWitness.git $SCRIPT_DIR/tools/EyeWitness"
+    post_install_command: "cd $SCRIPT_DIR/tools/EyeWitness/setup && ./setup.sh"
+    update_check: "github:RedSiege/EyeWitness"
+    binary_name: EyeWitness.py
+    binary_path: "tools/EyeWitness/Python/EyeWitness.py"
+    venv: true
+    venv_path: "tools/EyeWitness/eyewitness-venv"
+    venv_external: true
+    venv_activate: true
+
   katana:
     install_method: go
     install_command: "go install github.com/projectdiscovery/katana/cmd/katana@latest"

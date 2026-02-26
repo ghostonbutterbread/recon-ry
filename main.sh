@@ -26,6 +26,7 @@ DIR_ONLY=false
 SCAN_ACTION="list"
 COMMAND=""
 TOOL_TIMEOUT=""  # empty = use config default; 0 = no timeout
+EYE_INPUT=""
 
 # General usage information
 show_usage() {
@@ -105,6 +106,7 @@ Options:
     --fast              Quick scan (subdomain + alive check)
     --urls              URL discovery and alive check (requires wild.txt)
     --dork              Google dorking only
+    --eye [url|file]    EyeWitness screenshots and report only (optional URL or file)
     --dir               Directory fuzzing only (ffuf + dirsearch, requires alive.txt)
     --project <dir>     Project directory path (required for saving results)
     --url <url>         Target URL/domain to scan
@@ -122,6 +124,7 @@ Profiles:
     urls                URL discovery and alive check
     secrets             Secret scanning on existing data
     dork                Google dorking
+    eye                 EyeWitness screenshots and report
 
 Examples:
     # Full recon on a domain (saves to project directory)
@@ -138,6 +141,18 @@ Examples:
 
     # Single URL mode (output to stdout, no project directory)
     $(basename "$0") recon --url example.com --subs
+
+    # EyeWitness only (uses existing alive.txt)
+    $(basename "$0") recon --project ~/bounties/example --eye
+
+    # EyeWitness with URL (single URL mode)
+    $(basename "$0") recon --eye https://example.com
+
+    # EyeWitness with input file
+    $(basename "$0") recon --project ~/bounties/example --eye ~/targets/alive.txt
+
+    # EyeWitness with URL and project
+    $(basename "$0") recon --project ~/bounties/example --eye https://example.com
 
     # Dry run to see what would be executed
     $(basename "$0") recon --url example.com --project ~/bounties/example --full --dry-run
@@ -435,6 +450,15 @@ parse_args() {
             --dork)
                 PROFILE="dork"
                 shift
+                ;;
+            --eye)
+                PROFILE="eye"
+                if [[ -n "${2:-}" && "${2:0:1}" != "-" ]]; then
+                    EYE_INPUT="$2"
+                    shift 2
+                else
+                    shift
+                fi
                 ;;
             --dir)
                 DIR_ONLY=true

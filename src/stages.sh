@@ -113,6 +113,14 @@ execute_stage() {
         fi
 
         # Build tool parameter string
+        if [[ "$tool" == "eyewitness" && -n "${EYE_INPUT:-}" ]]; then
+            if [[ -f "$EYE_INPUT" ]]; then
+                input_file="$EYE_INPUT"
+            else
+                input_file="$project_dir/.eyewitness_input.txt"
+                printf '%s\n' "$EYE_INPUT" > "$input_file"
+            fi
+        fi
         tool_params+=("$tool:$input_file:$output_file:$domain:$url")
     done
 
@@ -189,6 +197,15 @@ run_recon_project() {
     fi
 
     log_info "Stages to run: $stages"
+
+    if [[ -n "$url" ]]; then
+        if echo " $stages " | grep -q " alive_check "; then
+            if [[ ! -s "$project_dir/urls.txt" ]]; then
+                printf '%s\n' "$url" > "$project_dir/urls.txt"
+                log_info "Seeded urls.txt for alive_check from --url"
+            fi
+        fi
+    fi
 
     if [[ "$DIR_ONLY" == "true" ]]; then
         log_info "Directory fuzzing only (--dir)"
@@ -345,6 +362,12 @@ run_recon_url_only() {
 
     # Get stages for profile
     local stages=$(get_profile_stages "$profile")
+
+    if [[ -n "$url" ]]; then
+        if echo " $stages " | grep -q " alive_check "; then
+            printf '%s\n' "$url" > "$temp_dir/urls.txt"
+        fi
+    fi
 
     # Execute stages
     for stage in $stages; do

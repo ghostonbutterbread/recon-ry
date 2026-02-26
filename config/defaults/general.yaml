@@ -53,6 +53,12 @@ stages:
     tools:
       - httpx
 
+  eyewitness:
+    parallel: false
+    description: "Visual reconnaissance (screenshots and report)"
+    tools:
+      - eyewitness
+
   param_discovery:
     parallel: false
     depends_on: [alive_check]
@@ -147,6 +153,14 @@ tools:
     command: "httpx -list {{INPUT}} -silent -mc 200,201,202,203,204,301,302,307,308,401,403,405 -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
     required_files: [urls.txt]
     outputs: [alive.txt]
+
+  # Visual Recon
+  eyewitness:
+    type: script
+    command: "mkdir -p {{PROJECT_DIR}}/eyewitness && {{VENV_PYTHON}} {{RECON_DIR}}/tools/EyeWitness/Python/EyeWitness.py -f {{INPUT}} -d {{PROJECT_DIR}}/eyewitness"
+    required_files: [alive.txt]
+    outputs: [eyewitness/report.html]
+    note: "Requires Chromium/ChromeDriver; run EyeWitness setup if missing"
 
   # Parameter Discovery
   gau_params:

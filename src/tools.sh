@@ -101,6 +101,8 @@ execute_tool() {
     venv_enabled=$(get_install_info "$tool" "venv" | tr '[:upper:]' '[:lower:]')
     local venv_path
     venv_path=$(get_install_info "$tool" "venv_path")
+    local venv_activate
+    venv_activate=$(get_install_info "$tool" "venv_activate" | tr '[:upper:]' '[:lower:]')
 
     if [[ "$venv_enabled" == "true" && -z "$venv_path" ]]; then
         venv_path="venvs/$tool"
@@ -139,6 +141,10 @@ execute_tool() {
             command="${command//\{\{VENV_PYTHON\}\}/python3}"
         fi
         command="${command//\{\{RATE_LIMIT\}\}/$rate_limit}"
+    fi
+
+    if [[ "$venv_activate" == "true" && -n "$venv_path" ]]; then
+        command="source \"$venv_path/bin/activate\" && $command"
     fi
 
     log_verbose "Running: $tool"
@@ -453,6 +459,10 @@ run_tools_sequential() {
 check_required_files() {
     local tool="$1"
     local project_dir="$2"
+
+    if [[ "$tool" == "eyewitness" && -n "${EYE_INPUT:-}" ]]; then
+        return 0
+    fi
 
     local required_files=$(get_tool_info "$tool" "required_files")
 
