@@ -470,13 +470,22 @@ check_required_files() {
         return 0
     fi
 
+    local temp_dir="$project_dir/.tmp_run"
     for file in $required_files; do
         local full_path="$project_dir/$file"
         if [[ ! -f "$full_path" ]]; then
+            local temp_path="$temp_dir/$file"
+            if [[ -f "$temp_path" && -s "$temp_path" ]]; then
+                continue
+            fi
             log_debug "Required file missing: $full_path"
             return 1
         fi
         if [[ ! -s "$full_path" ]]; then
+            local temp_path="$temp_dir/$file"
+            if [[ -f "$temp_path" && -s "$temp_path" ]]; then
+                continue
+            fi
             log_debug "Required file empty: $full_path"
             return 1
         fi

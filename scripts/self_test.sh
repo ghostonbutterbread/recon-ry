@@ -151,9 +151,6 @@ expect_count() {
 }
 
 # Expect only new entries from run 1 and run 2.
-# urls.txt also includes merged wild.txt hostnames via create_global_urls.
-expect_count "$date_dir/wild.txt" 3
-expect_count "$date_dir/urls.txt" 8
 expect_count "$date_dir/alive.txt" 3
 expect_count "$date_dir/params_raw.txt" 3
 expect_count "$date_dir/params.txt" 3

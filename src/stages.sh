@@ -44,6 +44,7 @@ execute_stage() {
     local project_dir="$2"
     local domain="$3"
     local url="$4"
+    local temp_dir="$project_dir/.tmp_run"
 
     log_info "Running stage: $stage"
 
@@ -104,12 +105,21 @@ execute_stage() {
         local outputs=$(get_tool_info "$tool" "outputs")
         local primary_output=$(echo "$outputs" | awk '{print $1}')
         local output_file="$project_dir/$primary_output"
+        if [[ "$primary_output" == "wild.txt" || "$primary_output" == "urls.txt" ]]; then
+            output_file="$temp_dir/$primary_output"
+        fi
 
         # Get tool inputs
         local required_files=$(get_tool_info "$tool" "required_files")
         local input_file=""
         if [[ -n "$required_files" && "$required_files" != "[]" ]]; then
-            input_file="$project_dir/$(echo "$required_files" | awk '{print $1}')"
+            local req_file
+            req_file="$(echo "$required_files" | awk '{print $1}')"
+            if [[ -f "$temp_dir/$req_file" && -s "$temp_dir/$req_file" ]]; then
+                input_file="$temp_dir/$req_file"
+            else
+                input_file="$project_dir/$req_file"
+            fi
         fi
 
         # Build tool parameter string
@@ -117,7 +127,7 @@ execute_stage() {
             if [[ -f "$EYE_INPUT" ]]; then
                 input_file="$EYE_INPUT"
             else
-                input_file="$project_dir/.eyewitness_input.txt"
+                input_file="$temp_dir/eyewitness_input.txt"
                 printf '%s\n' "$EYE_INPUT" > "$input_file"
             fi
         fi
@@ -197,6 +207,10 @@ run_recon_project() {
     fi
 
     log_info "Stages to run: $stages"
+
+    local temp_dir="$project_dir/.tmp_run"
+    rm -rf "$temp_dir"
+    mkdir -p "$temp_dir"
 
     if [[ -n "$url" ]]; then
         if echo " $stages " | grep -q " alive_check "; then

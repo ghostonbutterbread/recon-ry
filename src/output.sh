@@ -15,13 +15,13 @@ for tool in data.get('tools', {}).values():
     if isinstance(outs, str):
         outs = [outs]
     for o in outs:
-        if o:
+        if o and o not in ('wild.txt', 'urls.txt'):
             outputs.add(o)
 print(' '.join(sorted(outputs)))
 "
     else
         # Fallback if config isn't loaded for some reason
-        echo "wild.txt urls.txt alive.txt params.txt params_raw.txt jsfiles.txt secrets.txt dirs.txt dorks.txt"
+        echo "alive.txt params.txt params_raw.txt jsfiles.txt secrets.txt dirs.txt dorks.txt"
     fi
 }
 
@@ -184,11 +184,16 @@ merge_with_anew() {
 # Create global URLs file (merge wild.txt and urls.txt)
 create_global_urls() {
     local project_dir="$1"
-    local global_urls="$project_dir/urls.txt"
+    local temp_dir="$project_dir/.tmp_run"
+    local global_urls="$temp_dir/urls.txt"
 
-    log_debug "Creating global URLs file"
+    log_debug "Creating global URLs file (temp)"
+    mkdir -p "$temp_dir"
 
-    # Merge wild.txt into urls.txt
+    : > "$global_urls"
+    if [[ -f "$project_dir/urls.txt" && -s "$project_dir/urls.txt" ]]; then
+        merge_with_anew "$project_dir/urls.txt" "$global_urls"
+    fi
     if [[ -f "$project_dir/wild.txt" && -s "$project_dir/wild.txt" ]]; then
         merge_with_anew "$project_dir/wild.txt" "$global_urls"
     fi

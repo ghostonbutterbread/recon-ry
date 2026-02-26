@@ -161,6 +161,7 @@ Notes:
     - Either --project or --url must be specified
     - Subdomain enumeration requires --url or existing wild.txt
     - Use --project to save results, omit for stdout-only output
+    - wild.txt and urls.txt are treated as inputs and are not modified
     - Results are saved to history directory with timestamp
 EOF
 }
