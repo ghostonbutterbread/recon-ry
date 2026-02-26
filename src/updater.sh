@@ -72,6 +72,18 @@ install_tool() {
         return 1
     fi
 
+    local post_install_command
+    post_install_command=$(get_install_info "$tool" "post_install_command")
+    if [[ -n "$post_install_command" ]]; then
+        log_info "Running post-install for $tool..."
+        post_install_command="${post_install_command/#\~/$HOME}"
+        log_verbose "Running: $post_install_command"
+        eval "$post_install_command" || {
+            log_error "Post-install failed for $tool"
+            return 1
+        }
+    fi
+
     if [[ "$tool" == "nuclei" ]]; then
         ensure_wordlist_installed "nuclei_templates"
     fi
@@ -158,6 +170,26 @@ update_tool() {
                 log_warning "$tool not installed via git, reinstalling"
                 install_tool "$tool"
             fi
+            local post_install_command
+            post_install_command=$(get_install_info "$tool" "post_install_command")
+            if [[ -n "$post_install_command" ]]; then
+                local venv_external
+                venv_external=$(get_install_info "$tool" "venv_external" | tr '[:upper:]' '[:lower:]')
+                local venv_path
+                venv_path=$(get_install_info "$tool" "venv_path")
+                if [[ -n "$venv_path" ]]; then
+                    venv_path="${venv_path/#\~/$HOME}"
+                    if [[ "$venv_path" != /* ]]; then
+                        venv_path="$SCRIPT_DIR/$venv_path"
+                    fi
+                fi
+                if [[ "$venv_external" != "true" || -z "$venv_path" || ! -x "$venv_path/bin/python" ]]; then
+                    log_info "Running post-update for $tool..."
+                    post_install_command="${post_install_command/#\~/$HOME}"
+                    log_verbose "Running: $post_install_command"
+                    eval "$post_install_command" || log_warning "Post-update failed for $tool"
+                fi
+            fi
             setup_tool_venv "$tool"
             ;;
         *)
@@ -173,6 +205,8 @@ setup_tool_venv() {
 
     local venv_enabled
     venv_enabled=$(get_install_info "$tool" "venv" | tr '[:upper:]' '[:lower:]')
+    local venv_external
+    venv_external=$(get_install_info "$tool" "venv_external" | tr '[:upper:]' '[:lower:]')
     local venv_path
     venv_path=$(get_install_info "$tool" "venv_path")
 
@@ -187,6 +221,15 @@ setup_tool_venv() {
     venv_path="${venv_path/#\~/$HOME}"
     if [[ "$venv_path" != /* ]]; then
         venv_path="$SCRIPT_DIR/$venv_path"
+    fi
+
+    if [[ "$venv_external" == "true" ]]; then
+        if [[ -x "$venv_path/bin/python" ]]; then
+            log_verbose "Using external venv for $tool: $venv_path"
+            return 0
+        fi
+        log_warning "External venv not found for $tool: $venv_path"
+        return 0
     fi
 
     mkdir -p "$(dirname "$venv_path")"

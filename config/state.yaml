@@ -8,6 +8,7 @@ tools:
   waybackurls: true
   gau: true
   httpx: true
+  eyewitness: true
   gau_params: true
   uro: true
   js_files: true
@@ -21,6 +22,7 @@ stages:
   subdomain_enum: true
   url_discovery: true
   alive_check: true
+  eyewitness: true
   param_discovery: true
   dir_enum: true
   secret_scan: true
