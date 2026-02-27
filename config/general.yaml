@@ -165,7 +165,7 @@ tools:
   # Parameter Discovery
   gau_params:
     type: inline # gau normal run will check install
-    command: "cat {{INPUT}} | gau --threads 5 > {{OUTPUT}}"
+    command: "cat {{INPUT}} | gau --threads 2 > {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [params_raw.txt]
     note: "gau does not have native rate limiting"
