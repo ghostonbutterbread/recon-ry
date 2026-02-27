@@ -2,6 +2,9 @@
 
 # Stage execution module
 
+# Shared interruption flag (best-effort; may be overridden by parent shell)
+: "${INTERRUPTED:=false}"
+
 # Ensure eyewitness stage runs last when present
 reorder_stages_eyewitness_last() {
     local stages="$1"
@@ -216,7 +219,11 @@ execute_stage() {
 
     local exit_code=$?
 
-    if [[ $exit_code -gt 0 ]]; then
+    if [[ $exit_code -eq 130 || "${INTERRUPTED:-false}" == "true" ]]; then
+        INTERRUPTED=true
+        log_warning "Stage $stage interrupted"
+        return 130
+    elif [[ $exit_code -gt 0 ]]; then
         log_warning "Stage $stage completed with $exit_code failed tools"
     else
         log_success "Stage $stage completed successfully"
@@ -324,6 +331,11 @@ run_recon_project() {
     # Execute each stage
     local failed_stages=0
     for stage in $stages; do
+        if [[ "${INTERRUPTED:-false}" == "true" ]]; then
+            log_warning "Interrupt requested; stopping remaining stages"
+            return 130
+        fi
+
         if [[ "$stage" == "alive_check" ]]; then
             # Ensure wild.txt is merged into urls.txt before httpx
             create_global_urls "$project_dir"
@@ -333,6 +345,10 @@ run_recon_project() {
             continue
         fi
         if ! execute_stage "$stage" "$project_dir" "$domain" "$url"; then
+            if [[ "${INTERRUPTED:-false}" == "true" ]]; then
+                log_warning "Recon interrupted by user"
+                return 130
+            fi
             ((failed_stages++))
             log_error "Stage $stage failed"
         fi

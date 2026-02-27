@@ -2,6 +2,9 @@
 
 # Tools execution module
 
+# Shared interruption flag (best-effort; may be overridden by parent shell)
+: "${INTERRUPTED:=false}"
+
 # Check if a tool binary exists
 check_tool_exists() {
     local tool="$1"
@@ -178,6 +181,10 @@ execute_tool() {
     if [[ $exit_code -eq 0 ]]; then
         log_debug "Tool $tool completed successfully"
         return 0
+    elif [[ $exit_code -eq 130 ]]; then
+        INTERRUPTED=true
+        log_warning "Tool $tool interrupted"
+        return 130
     elif [[ $exit_code -eq 124 ]]; then
         log_warning "Tool $tool timed out after ${effective_timeout}s"
         return 0  # Treat timeout as non-fatal; keep whatever output was produced
@@ -276,8 +283,15 @@ run_tool_with_anew() {
         fi
     }
 
+    handle_tool_interrupt() {
+        INTERRUPTED=true
+        merge_temp_output
+        return 130
+    }
+
     # Ensure partial results are merged on exit/interrupt
-    trap 'merge_temp_output' EXIT INT TERM
+    trap 'merge_temp_output' EXIT
+    trap 'handle_tool_interrupt' INT TERM
 
     parse_ffuf_json() {
         local json_file="$1"
@@ -325,9 +339,16 @@ PY
 
     # Execute tool
     local exec_ok=true
-    if ! execute_tool "$tool" "$input_file" "$temp_output" "$domain" "$url"; then
+    local exec_status=0
+    execute_tool "$tool" "$input_file" "$temp_output" "$domain" "$url" || exec_status=$?
+    if [[ $exec_status -ne 0 ]]; then
         exec_ok=false
-        log_warning "Tool $tool failed; attempting to merge partial output"
+        if [[ $exec_status -eq 130 || "${INTERRUPTED:-false}" == "true" ]]; then
+            INTERRUPTED=true
+            log_warning "Tool $tool interrupted; merging partial output"
+        else
+            log_warning "Tool $tool failed; attempting to merge partial output"
+        fi
     fi
 
     # Use anew to append unique results
@@ -405,6 +426,9 @@ PY
     if [[ "$exec_ok" == "true" ]]; then
         return 0
     fi
+    if [[ "${INTERRUPTED:-false}" == "true" ]]; then
+        return 130
+    fi
     return 1
 }
 
@@ -436,7 +460,18 @@ run_tools_parallel() {
     # Wait for all tools to complete
     local failed=0
     for pid in "${pids[@]}"; do
-        if ! wait "$pid"; then
+        local rc=0
+        wait "$pid" || rc=$?
+        if [[ $rc -ne 0 ]]; then
+            if [[ $rc -eq 130 || "${INTERRUPTED:-false}" == "true" ]]; then
+                INTERRUPTED=true
+                for other_pid in "${pids[@]}"; do
+                    if [[ "$other_pid" != "$pid" ]] && kill -0 "$other_pid" 2>/dev/null; then
+                        kill "$other_pid" 2>/dev/null || true
+                    fi
+                done
+                return 130
+            fi
             ((failed++))
         fi
     done
@@ -453,7 +488,13 @@ run_tools_sequential() {
         # Parse tool with its parameters
         IFS=':' read -r tool_name input_file output_file domain url <<< "$tool"
 
-        if ! run_tool_with_anew "$tool_name" "$input_file" "$output_file" "$domain" "$url"; then
+        local rc=0
+        run_tool_with_anew "$tool_name" "$input_file" "$output_file" "$domain" "$url" || rc=$?
+        if [[ $rc -ne 0 ]]; then
+            if [[ $rc -eq 130 || "${INTERRUPTED:-false}" == "true" ]]; then
+                INTERRUPTED=true
+                return 130
+            fi
             ((failed++))
         fi
     done

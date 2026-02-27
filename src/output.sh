@@ -187,9 +187,17 @@ create_global_urls() {
     local temp_dir="$project_dir/.tmp_run"
     local global_urls="$temp_dir/urls.txt"
     local seed_url="$temp_dir/url_seed.txt"
+    local temp_wild="$temp_dir/wild.txt"
+    local preserved_urls=""
 
     log_debug "Creating global URLs file (temp)"
     mkdir -p "$temp_dir"
+
+    # Preserve URLs already discovered during this run before rebuilding aggregate.
+    if [[ -f "$global_urls" && -s "$global_urls" ]]; then
+        preserved_urls=$(mktemp)
+        cp "$global_urls" "$preserved_urls"
+    fi
 
     : > "$global_urls"
     if [[ -f "$seed_url" && -s "$seed_url" ]]; then
@@ -200,6 +208,15 @@ create_global_urls() {
     fi
     if [[ -f "$project_dir/wild.txt" && -s "$project_dir/wild.txt" ]]; then
         merge_with_anew "$project_dir/wild.txt" "$global_urls"
+    fi
+    if [[ -f "$temp_wild" && -s "$temp_wild" ]]; then
+        merge_with_anew "$temp_wild" "$global_urls"
+    fi
+    if [[ -n "$preserved_urls" ]]; then
+        if [[ -s "$preserved_urls" ]]; then
+            merge_with_anew "$preserved_urls" "$global_urls"
+        fi
+        rm -f "$preserved_urls"
     fi
 }
 

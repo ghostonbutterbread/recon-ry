@@ -27,6 +27,13 @@ SCAN_ACTION="list"
 COMMAND=""
 TOOL_TIMEOUT=""  # empty = use config default; 0 = no timeout
 EYE_INPUT=""
+INTERRUPTED=false
+
+handle_interrupt() {
+    INTERRUPTED=true
+    # Stop background jobs started by this shell (best-effort).
+    jobs -pr | xargs -r kill 2>/dev/null || true
+}
 
 # General usage information
 show_usage() {
@@ -620,4 +627,5 @@ main() {
 }
 
 parse_args "$@"
+trap 'handle_interrupt' INT TERM
 main
