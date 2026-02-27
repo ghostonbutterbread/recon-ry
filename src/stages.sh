@@ -4,6 +4,13 @@
 
 # Shared interruption flag (best-effort; may be overridden by parent shell)
 : "${INTERRUPTED:=false}"
+: "${EYE_DATE_STAMP:=}"
+: "${CURRENT_HISTORY_DIR:=}"
+
+dir_has_contents() {
+    local dir_path="$1"
+    [[ -d "$dir_path" ]] && find "$dir_path" -mindepth 1 -print -quit 2>/dev/null | grep -q .
+}
 
 # Ensure eyewitness stage runs last when present
 reorder_stages_eyewitness_last() {
@@ -155,7 +162,16 @@ execute_stage() {
 
         # Build tool parameter string
         if [[ "$tool" == "eyewitness" ]]; then
-            mkdir -p "$project_dir/eyewitness"
+            if [[ -z "${EYE_DATE_STAMP:-}" ]]; then
+                EYE_DATE_STAMP="$(date +"%-m-%-d-%Y")"
+            fi
+            local eye_root="$project_dir/eyewitness"
+            local eye_history_run_dir="$eye_root/history/$EYE_DATE_STAMP"
+            local eye_had_existing_content=false
+            if dir_has_contents "$eye_root"; then
+                eye_had_existing_content=true
+            fi
+            mkdir -p "$eye_history_run_dir"
 
             if [[ -n "${EYE_INPUT:-}" ]]; then
                 if [[ -f "$EYE_INPUT" ]]; then
@@ -164,32 +180,53 @@ execute_stage() {
                     input_file="$temp_dir/eyewitness_input.txt"
                     printf '%s\n' "$EYE_INPUT" > "$input_file"
                 fi
-                output_file="$project_dir/eyewitness/custom_input"
+                output_file="$eye_history_run_dir/custom_input"
                 tool_params+=("$tool:$input_file:$output_file:$domain:$url")
                 continue
             fi
 
             local params_input=""
             local alive_input=""
+            local use_history_inputs=false
 
-            if [[ -f "$temp_dir/params.txt" && -s "$temp_dir/params.txt" ]]; then
-                params_input="$temp_dir/params.txt"
-            elif [[ -f "$project_dir/params.txt" && -s "$project_dir/params.txt" ]]; then
-                params_input="$project_dir/params.txt"
+            # For full profile reruns with existing EyeWitness content, only scan
+            # this run's history delta files instead of full project files.
+            if [[ "${PROFILE:-}" == "full" && -n "${CURRENT_HISTORY_DIR:-}" ]]; then
+                if [[ "$eye_had_existing_content" == "true" ]]; then
+                    use_history_inputs=true
+                fi
             fi
 
-            if [[ -f "$temp_dir/alive.txt" && -s "$temp_dir/alive.txt" ]]; then
-                alive_input="$temp_dir/alive.txt"
-            elif [[ -f "$project_dir/alive.txt" && -s "$project_dir/alive.txt" ]]; then
-                alive_input="$project_dir/alive.txt"
+            if [[ "$use_history_inputs" == "true" ]]; then
+                if [[ -f "$CURRENT_HISTORY_DIR/params.txt" && -s "$CURRENT_HISTORY_DIR/params.txt" ]]; then
+                    params_input="$CURRENT_HISTORY_DIR/params.txt"
+                fi
+
+                if [[ -f "$CURRENT_HISTORY_DIR/alive.txt" && -s "$CURRENT_HISTORY_DIR/alive.txt" ]]; then
+                    alive_input="$CURRENT_HISTORY_DIR/alive.txt"
+                fi
+            fi
+
+            if [[ "$use_history_inputs" == "false" ]]; then
+                if [[ -f "$temp_dir/params.txt" && -s "$temp_dir/params.txt" ]]; then
+                    params_input="$temp_dir/params.txt"
+                elif [[ -f "$project_dir/params.txt" && -s "$project_dir/params.txt" ]]; then
+                    params_input="$project_dir/params.txt"
+                fi
+
+                if [[ -f "$temp_dir/alive.txt" && -s "$temp_dir/alive.txt" ]]; then
+                    alive_input="$temp_dir/alive.txt"
+                elif [[ -f "$project_dir/alive.txt" && -s "$project_dir/alive.txt" ]]; then
+                    alive_input="$project_dir/alive.txt"
+                fi
             fi
 
             if [[ -n "$params_input" ]]; then
-                tool_params+=("$tool:$params_input:$project_dir/eyewitness/params:$domain:$url")
+                tool_params+=("$tool:$params_input:$eye_history_run_dir/params:$domain:$url")
             fi
 
             if [[ -n "$alive_input" ]]; then
-                tool_params+=("$tool:$alive_input:$project_dir/eyewitness/alive:$domain:$url")
+                tool_params+=("$tool:$alive_input:$eye_history_run_dir/alive:$domain:$url")
             fi
 
             if [[ -z "$params_input" && -z "$alive_input" ]]; then
@@ -324,6 +361,8 @@ run_recon_project() {
     # Create history directory
     local date_stamp=$(date +"%-m-%-d-%Y")
     local history_dir="$project_dir/history/$date_stamp"
+    EYE_DATE_STAMP="$date_stamp"
+    CURRENT_HISTORY_DIR="$history_dir"
     mkdir -p "$history_dir"
     log_info "History directory: $history_dir"
     init_history_baseline "$project_dir" "$history_dir"
@@ -400,6 +439,8 @@ run_recon_url_only() {
     local profile="$2"
 
     local domain=$(echo "$url" | sed -e 's|^https\?://||' -e 's|/.*||')
+    EYE_DATE_STAMP="$(date +"%-m-%-d-%Y")"
+    CURRENT_HISTORY_DIR=""
 
     log_info "Running recon on: $domain"
     log_info "Profile: $profile"
