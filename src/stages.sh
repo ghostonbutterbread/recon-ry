@@ -2,6 +2,28 @@
 
 # Stage execution module
 
+# Ensure eyewitness stage runs last when present
+reorder_stages_eyewitness_last() {
+    local stages="$1"
+    local reordered=()
+    local saw_eyewitness=false
+    local stage
+
+    for stage in $stages; do
+        if [[ "$stage" == "eyewitness" ]]; then
+            saw_eyewitness=true
+            continue
+        fi
+        reordered+=("$stage")
+    done
+
+    if [[ "$saw_eyewitness" == "true" ]]; then
+        reordered+=("eyewitness")
+    fi
+
+    printf '%s\n' "${reordered[*]}"
+}
+
 # Check if stage dependencies are met
 check_stage_dependencies() {
     local stage="$1"
@@ -129,14 +151,51 @@ execute_stage() {
         fi
 
         # Build tool parameter string
-        if [[ "$tool" == "eyewitness" && -n "${EYE_INPUT:-}" ]]; then
-            if [[ -f "$EYE_INPUT" ]]; then
-                input_file="$EYE_INPUT"
-            else
-                input_file="$temp_dir/eyewitness_input.txt"
-                printf '%s\n' "$EYE_INPUT" > "$input_file"
+        if [[ "$tool" == "eyewitness" ]]; then
+            mkdir -p "$project_dir/eyewitness"
+
+            if [[ -n "${EYE_INPUT:-}" ]]; then
+                if [[ -f "$EYE_INPUT" ]]; then
+                    input_file="$EYE_INPUT"
+                else
+                    input_file="$temp_dir/eyewitness_input.txt"
+                    printf '%s\n' "$EYE_INPUT" > "$input_file"
+                fi
+                output_file="$project_dir/eyewitness/custom_input"
+                tool_params+=("$tool:$input_file:$output_file:$domain:$url")
+                continue
             fi
+
+            local params_input=""
+            local alive_input=""
+
+            if [[ -f "$temp_dir/params.txt" && -s "$temp_dir/params.txt" ]]; then
+                params_input="$temp_dir/params.txt"
+            elif [[ -f "$project_dir/params.txt" && -s "$project_dir/params.txt" ]]; then
+                params_input="$project_dir/params.txt"
+            fi
+
+            if [[ -f "$temp_dir/alive.txt" && -s "$temp_dir/alive.txt" ]]; then
+                alive_input="$temp_dir/alive.txt"
+            elif [[ -f "$project_dir/alive.txt" && -s "$project_dir/alive.txt" ]]; then
+                alive_input="$project_dir/alive.txt"
+            fi
+
+            if [[ -n "$params_input" ]]; then
+                tool_params+=("$tool:$params_input:$project_dir/eyewitness/params:$domain:$url")
+            fi
+
+            if [[ -n "$alive_input" ]]; then
+                tool_params+=("$tool:$alive_input:$project_dir/eyewitness/alive:$domain:$url")
+            fi
+
+            if [[ -z "$params_input" && -z "$alive_input" ]]; then
+                log_debug "Tool $tool missing alive.txt and params.txt, skipping"
+                ((skipped_tools++))
+            fi
+            continue
         fi
+
         tool_params+=("$tool:$input_file:$output_file:$domain:$url")
     done
 
@@ -206,6 +265,7 @@ run_recon_project() {
 
     # Get stages for profile
     local stages=$(get_profile_stages "$profile")
+    stages=$(reorder_stages_eyewitness_last "$stages")
 
     if [[ -z "$stages" ]]; then
         log_error "Profile $profile not found or has no stages"
@@ -334,6 +394,7 @@ run_recon_url_only() {
 
     # Get stages for profile
     local stages=$(get_profile_stages "$profile")
+    stages=$(reorder_stages_eyewitness_last "$stages")
 
     if [[ -n "$url" ]]; then
         printf '%s\n' "$url" > "$temp_dir/url_seed.txt"

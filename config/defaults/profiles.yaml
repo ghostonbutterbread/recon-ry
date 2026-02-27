@@ -8,10 +8,10 @@ profiles:
       - subdomain_enum
       - url_discovery
       - alive_check
-      - eyewitness
       - param_discovery
       - dir_enum
       - secret_scan
+      - eyewitness
 
   subs:
     description: "Subdomain enumeration only"

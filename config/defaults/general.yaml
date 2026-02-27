@@ -157,9 +157,9 @@ tools:
   # Visual Recon
   eyewitness:
     type: script
-    command: "mkdir -p {{PROJECT_DIR}}/eyewitness && {{VENV_PYTHON}} {{RECON_DIR}}/tools/EyeWitness/Python/EyeWitness.py -f {{INPUT}} -d {{PROJECT_DIR}}/eyewitness"
+    command: "mkdir -p {{OUTPUT}} && {{VENV_PYTHON}} {{RECON_DIR}}/tools/EyeWitness/Python/EyeWitness.py -f {{INPUT}} -d {{OUTPUT}}"
     required_files: [alive.txt]
-    outputs: [eyewitness/report.html]
+    outputs: [eyewitness/alive/report.html, eyewitness/params/report.html]
     note: "Requires Chromium/ChromeDriver; run EyeWitness setup if missing"
 
   # Parameter Discovery

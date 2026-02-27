@@ -214,6 +214,12 @@ run_tool_with_anew() {
     local domain="$4"
     local url="$5"
 
+    if [[ "$tool" == "eyewitness" ]]; then
+        mkdir -p "$output_file"
+        execute_tool "$tool" "$input_file" "$output_file" "$domain" "$url"
+        return $?
+    fi
+
     # Create temp file for tool output
     local temp_output=""
     local keep_partial=false
@@ -462,6 +468,21 @@ check_required_files() {
 
     if [[ "$tool" == "eyewitness" && -n "${EYE_INPUT:-}" ]]; then
         return 0
+    fi
+
+    if [[ "$tool" == "eyewitness" ]]; then
+        local temp_dir="$project_dir/.tmp_run"
+        local alive_path="$project_dir/alive.txt"
+        local params_path="$project_dir/params.txt"
+        local alive_temp="$temp_dir/alive.txt"
+        local params_temp="$temp_dir/params.txt"
+
+        if [[ -s "$alive_path" || -s "$params_path" || -s "$alive_temp" || -s "$params_temp" ]]; then
+            return 0
+        fi
+
+        log_debug "Required file missing/empty for eyewitness: alive.txt or params.txt"
+        return 1
     fi
 
     local required_files=$(get_tool_info "$tool" "required_files")

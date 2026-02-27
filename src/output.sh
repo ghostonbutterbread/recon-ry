@@ -270,7 +270,7 @@ export_json() {
 EOF
 
     local first=true
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt eyewitness/report.html; do
+    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt eyewitness/alive/report.html eyewitness/params/report.html eyewitness/custom_input/report.html; do
         if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
             if [[ "$first" == "false" ]]; then
                 echo "," >> "$output_file"
