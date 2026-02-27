@@ -142,7 +142,7 @@ tools:
 
   gau:
     type: binary
-    command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
+    command: "cat {{INPUT}} | gau --threads 2 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
     note: "gau does not have native rate limiting"
