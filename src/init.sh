@@ -117,6 +117,8 @@ EOF
 # Main init entry point
 run_init() {
     local project_dir="$1"
+    local urls_file="$project_dir/urls.txt"
+    local wild_file="$project_dir/wild.txt"
 
     # Create project directory if it doesn't exist
     if [[ ! -d "$project_dir" ]]; then
@@ -125,6 +127,15 @@ run_init() {
     fi
 
     log_info "Initializing project: $project_dir"
+
+    # If both seed files already exist, skip paste prompts and only create config.
+    if [[ -f "$urls_file" && -f "$wild_file" ]]; then
+        log_info "Found existing urls.txt and wild.txt - generating project config only"
+        _init_generate_rate_limit_conf "$project_dir"
+        echo "" >&2
+        log_success "Project initialized: $project_dir"
+        return 0
+    fi
 
     # Paste box for urls.txt
     _init_paste_box "$project_dir" "urls.txt" "Target URLs"
