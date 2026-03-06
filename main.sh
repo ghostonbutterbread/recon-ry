@@ -112,6 +112,7 @@ Options:
     --subs              Subdomain enumeration only
     --fast              Quick scan (subdomain + alive check)
     --urls              URL discovery and alive check (requires wild.txt)
+    --params            Parameter discovery (param_recon)
     --dork              Google dorking only
     --eye [url|file]    EyeWitness screenshots and report only (optional URL or file)
     --dir               Directory fuzzing only (ffuf + dirsearch, requires alive.txt)
@@ -129,6 +130,7 @@ Profiles:
     subs                Subdomain enumeration only
     fast                Quick scan (subdomain + alive check)
     urls                URL discovery and alive check
+    params              Parameter discovery (param_recon)
     secrets             Secret scanning on existing data
     dork                Google dorking
     eye                 EyeWitness screenshots and report
@@ -449,6 +451,10 @@ parse_args() {
                 ;;
             --urls)
                 PROFILE="urls"
+                shift
+                ;;
+            --params)
+                PROFILE="params"
                 shift
                 ;;
             --secrets)

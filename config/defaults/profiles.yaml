@@ -44,3 +44,8 @@ profiles:
     stages:
       - url_discovery
       - alive_check
+
+  params:
+    description: "Parameter discovery (param_recon)"
+    stages:
+      - param_discovery
