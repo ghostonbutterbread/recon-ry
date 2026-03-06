@@ -242,6 +242,7 @@ fi
 # ─── ACTIVE: hakrawler ────────────────────────────────────────────────────────
 phase "hakrawler (link + form crawler)"
 if [[ $USE_HAKRAWLER -eq 1 ]] && command -v hakrawler &>/dev/null; then
+    # hakrawler has no native rate limit flag; rate limiting is not applied here
     cat "$INPUT" | hakrawler \
         -d "$KATANA_DEPTH" \
         -subs \
@@ -258,13 +259,15 @@ fi
 phase "gospider (broad web spider)"
 if [[ $USE_GOSPIDER -eq 1 ]] && command -v gospider &>/dev/null; then
     GOSPIDER_OUT=$(mktemp -d /tmp/pr_gospider_out.XXXXXX)
+    # Convert req/s to ms delay for gospider
+    GOSPIDER_DELAY=$(( 1000 / RATE ))
     # gospider takes one URL at a time; run on each unique base host
     while IFS= read -r domain; do
         # Try https first, gospider handles redirects
         gospider -s "https://$domain" \
             --depth "$KATANA_DEPTH" \
             --concurrent 1 \
-            --delay 0 \
+            --delay "$GOSPIDER_DELAY" \
             -o "$GOSPIDER_OUT/$domain" \
             --no-redirect \
             --blacklist "png,jpg,jpeg,gif,svg,ico,woff,woff2,css,eot,ttf,pdf,zip" \
