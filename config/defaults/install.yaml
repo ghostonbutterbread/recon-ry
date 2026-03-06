@@ -12,6 +12,12 @@ tools:
     binary_path: "scripts/crt_sh.sh"
     dependencies: [curl, jq, anew]
 
+  param_recon:
+    install_method: script
+    install_command: "# Bundled script - no installation needed"
+    binary_path: "scripts/param_recon.sh"
+    dependencies: [waybackurls, katana, hakrawler, uro]
+
   dork_scan:
     install_method: inline
     install_command: "# Built-in command - no installation needed"

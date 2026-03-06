@@ -64,7 +64,7 @@ stages:
     depends_on: [alive_check]
     description: "Parameter discovery"
     tools:
-      - gau_params
+      - param_recon
       - uro
       - js_files
       - unclutter_jsfiles
@@ -142,7 +142,7 @@ tools:
 
   gau:
     type: binary
-    command: "cat {{INPUT}} | gau --threads 2 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
+    command: "cat {{INPUT}} | gau --threads 1 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
     note: "gau does not have native rate limiting"
@@ -163,9 +163,15 @@ tools:
     note: "Requires Chromium/ChromeDriver; run EyeWitness setup if missing"
 
   # Parameter Discovery
+  param_recon:
+    type: script
+    command: "rm -rf {{PROJECT_DIR}}/.param_recon_tmp && bash {{RECON_DIR}}/scripts/param_recon.sh -i {{INPUT}} -o {{PROJECT_DIR}}/.param_recon_tmp && cat {{PROJECT_DIR}}/.param_recon_tmp/params_raw.txt > {{OUTPUT}}"
+    required_files: [alive.txt]
+    outputs: [params_raw.txt]
+
   gau_params:
     type: inline # gau normal run will check install
-    command: "cat {{INPUT}} | gau --threads 2 > {{OUTPUT}}"
+    command: "cat {{INPUT}} | gau --threads 1 > {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [params_raw.txt]
     note: "gau does not have native rate limiting"

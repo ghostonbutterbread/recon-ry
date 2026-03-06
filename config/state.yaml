@@ -1,29 +1,55 @@
+# Tool and Stage State Configuration
+# Tracks which tools and stages are enabled/disabled.
+# NOTE: Comments are stripped when the TUI writes updates.
+
 tools:
+  # -- subdomain_enum -----------------------------------------------------------
   subfinder: true
   crt_sh: true
   assetfinder: true
   amass: false
+
+  # -- url_discovery ------------------------------------------------------------
   katana: false
   hakrawler: false
   waybackurls: true
   gau: true
+
+  # -- alive_check --------------------------------------------------------------
   httpx: true
-  eyewitness: true
-  gau_params: true
+
+  # -- param_discovery ----------------------------------------------------------
+  param_recon: true
   uro: true
   js_files: true
   unclutter_jsfiles: true
+
+  # -- dir_enum -----------------------------------------------------------------
   ffuf: true
+
+  # -- secret_scan --------------------------------------------------------------
   nuclei: false
   trufflehog: false
   secret_finder: true
+
+  # -- eyewitness ---------------------------------------------------------------
+  eyewitness: true
+
+  # -- dork (standalone) --------------------------------------------------------
   dork_scan: false
+
+  # -- legacy / unused ----------------------------------------------------------
+  gau_params: false
+
 stages:
+  # Full profile run order
   subdomain_enum: true
   url_discovery: true
   alive_check: true
-  eyewitness: true
   param_discovery: true
   dir_enum: true
   secret_scan: true
+  eyewitness: true
+
+  # Standalone profiles
   dork: false
