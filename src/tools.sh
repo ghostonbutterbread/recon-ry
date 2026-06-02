@@ -155,10 +155,10 @@ execute_tool() {
 
     # Resolve effective timeout: flag > config default; 0 = disabled
     local effective_timeout
-    if [[ -z "${TOOL_TIMEOUT}" ]]; then
+    if [[ -z "${TOOL_TIMEOUT:-}" ]]; then
         effective_timeout=$(get_default_timeout)
     else
-        effective_timeout=$TOOL_TIMEOUT
+        effective_timeout=${TOOL_TIMEOUT:-}
     fi
 
     # Execute command, wrapped with timeout when applicable
