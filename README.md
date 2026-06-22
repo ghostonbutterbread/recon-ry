@@ -237,7 +237,7 @@ stages:
    - httpx (filters live hosts)
 
 4. **IP Enrichment** → `ips.txt`, `hosts.jsonl`
-   - extract IPs from the full `urls.txt` corpus with httpx `-ip`, falling back to DNS resolution
+   - extract and dedupe hosts from `urls.txt` plus `alive.txt`, then use httpx `-ip` with DNS fallback
 
 5. **Port Enrichment** → `naabu.jsonl`, `ports.txt`
    - naabu fast port signal, controlled by config and run once per profile

@@ -167,17 +167,29 @@ def has_cdn_like_resolution(project_dir: Path) -> bool:
 
 
 def cmd_get_ips(args: argparse.Namespace) -> int:
-    rate_limit = normalized_rate_limit(args.rate_limit)
-    code, httpx_rows = httpx_ip_probe(args.input, rate_limit)
-    if code == 0:
-        ips_rows, host_rows = host_ip_rows_from_httpx(httpx_rows)
-        if ips_rows:
-            append_unique(args.output, ips_rows)
-            append_unique(args.project_dir / "hosts.jsonl", host_rows)
-            append_unique(args.project_dir / "httpx_ip_raw.txt", httpx_rows)
-            return 0
+    input_values = read_lines(args.input) + read_lines(args.project_dir / "alive.txt")
+    hosts = unique_hosts(input_values)
+    if not hosts:
+        args.output.write_text("", encoding="utf-8")
+        return 0
 
-    hosts = unique_hosts(read_lines(args.input))
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+        handle.write("\n".join(hosts) + "\n")
+        host_file = Path(handle.name)
+
+    rate_limit = normalized_rate_limit(args.rate_limit)
+    try:
+        code, httpx_rows = httpx_ip_probe(host_file, rate_limit)
+        if code == 0:
+            ips_rows, host_rows = host_ip_rows_from_httpx(httpx_rows)
+            if ips_rows:
+                append_unique(args.output, ips_rows)
+                append_unique(args.project_dir / "hosts.jsonl", host_rows)
+                append_unique(args.project_dir / "httpx_ip_raw.txt", httpx_rows)
+                return 0
+    finally:
+        host_file.unlink(missing_ok=True)
+
     ips: set[str] = set()
     host_rows: list[str] = []
 
