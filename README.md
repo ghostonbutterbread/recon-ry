@@ -243,7 +243,7 @@ stages:
    - naabu fast port signal, controlled by config and run once per profile
 
 6. **HTTP Fingerprinting** → `httpx.jsonl`, `waf_hosts.txt`, `unprotected_hosts.txt`
-   - httpx JSON facts for tech, CDN/WAF hints, status, title, and web server
+   - host-deduped httpx JSON facts for tech, CDN/WAF hints, status, title, and web server
 
 7. **Parameter Discovery** → `params.txt`
    - gau (with parameters) → uro (deduplication)

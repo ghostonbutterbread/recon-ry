@@ -138,6 +138,15 @@ def host_ip_rows_from_httpx(rows: list[str]) -> tuple[list[str], list[str]]:
     return sorted(ips), host_json
 
 
+def write_host_input(values: list[str]) -> Path | None:
+    hosts = unique_hosts(values)
+    if not hosts:
+        return None
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+        handle.write("\n".join(hosts) + "\n")
+        return Path(handle.name)
+
+
 def load_ip_to_hosts(project_dir: Path) -> dict[str, list[str]]:
     ip_to_hosts: dict[str, set[str]] = {}
     for line in read_lines(project_dir / "hosts.jsonl"):
@@ -169,13 +178,10 @@ def has_cdn_like_resolution(project_dir: Path) -> bool:
 def cmd_get_ips(args: argparse.Namespace) -> int:
     input_values = read_lines(args.input) + read_lines(args.project_dir / "alive.txt")
     hosts = unique_hosts(input_values)
-    if not hosts:
+    host_file = write_host_input(input_values)
+    if not host_file:
         args.output.write_text("", encoding="utf-8")
         return 0
-
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
-        handle.write("\n".join(hosts) + "\n")
-        host_file = Path(handle.name)
 
     rate_limit = normalized_rate_limit(args.rate_limit)
     try:
@@ -295,10 +301,15 @@ def cmd_run_naabu(args: argparse.Namespace) -> int:
 
 
 def cmd_run_httpx(args: argparse.Namespace) -> int:
+    host_file = write_host_input(read_lines(args.input))
+    if not host_file:
+        args.output.write_text("", encoding="utf-8")
+        return 0
+
     command = [
         "httpx",
         "-list",
-        str(args.input),
+        str(host_file),
         "-silent",
         "-json",
         "-tech-detect",
@@ -312,9 +323,12 @@ def cmd_run_httpx(args: argparse.Namespace) -> int:
     rate_limit = normalized_rate_limit(args.rate_limit)
     if rate_limit:
         command.extend(["-rate-limit", str(rate_limit)])
-    code = run_command(command)
-    if code != 0:
-        return code
+    try:
+        code = run_command(command)
+        if code != 0:
+            return code
+    finally:
+        host_file.unlink(missing_ok=True)
 
     waf_hosts: list[str] = []
     unprotected_hosts: list[str] = []
