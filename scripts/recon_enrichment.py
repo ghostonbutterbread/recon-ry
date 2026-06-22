@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -66,21 +67,129 @@ def resolve_ips(host: str) -> list[str]:
     return ips
 
 
+IP_LINE_RE = re.compile(r"\[([0-9a-fA-F:.]+)\]")
+IP_LITERAL_RE = re.compile(r"^[0-9a-fA-F:.]+$")
+
+
+def httpx_binary() -> str | None:
+    """Prefer the ProjectDiscovery httpx binary, including common Go install paths."""
+    candidates = [
+        shutil.which("httpx-toolkit"),
+        str(Path.home() / "go" / "bin" / "httpx"),
+        shutil.which("httpx"),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            help_text = subprocess.run(
+                [candidate, "-h"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (FileNotFoundError, subprocess.SubprocessError):
+            continue
+        combined = f"{help_text.stdout}\n{help_text.stderr}"
+        if "-ip" in combined and ("-l," in combined or "-list" in combined):
+            return candidate
+    return None
+
+
+def httpx_ip_probe(input_path: Path, rate_limit: int) -> tuple[int, list[str]]:
+    binary = httpx_binary()
+    if not binary:
+        return 127, []
+
+    command = [binary, "-l", str(input_path), "-ip", "-silent"]
+    if rate_limit:
+        command.extend(["-rl", str(rate_limit)])
+    try:
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+    except FileNotFoundError:
+        return 127, []
+    rows = [
+        line.strip()
+        for line in f"{result.stdout}\n{result.stderr}".splitlines()
+        if line.strip()
+    ]
+    return result.returncode, rows
+
+
+def host_ip_rows_from_httpx(rows: list[str]) -> tuple[list[str], list[str]]:
+    ips: set[str] = set()
+    host_rows: dict[str, set[str]] = {}
+    for row in rows:
+        match = IP_LINE_RE.search(row)
+        if not match:
+            continue
+        ip = match.group(1)
+        host = extract_host(row.split("[", 1)[0].strip())
+        if not host:
+            continue
+        ips.add(ip)
+        host_rows.setdefault(host, set()).add(ip)
+
+    host_json = [
+        json.dumps({"host": host, "ips": sorted(host_ips), "resolved": True, "source": "httpx-ip"}, sort_keys=True)
+        for host, host_ips in sorted(host_rows.items())
+    ]
+    return sorted(ips), host_json
+
+
+def load_ip_to_hosts(project_dir: Path) -> dict[str, list[str]]:
+    ip_to_hosts: dict[str, set[str]] = {}
+    for line in read_lines(project_dir / "hosts.jsonl"):
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        host = str(item.get("host") or "")
+        ips = item.get("ips") or []
+        if not host or not isinstance(ips, list):
+            continue
+        for ip in ips:
+            ip_to_hosts.setdefault(str(ip), set()).add(host)
+    return {ip: sorted(hosts) for ip, hosts in ip_to_hosts.items()}
+
+
+def has_cdn_like_resolution(project_dir: Path) -> bool:
+    for line in read_lines(project_dir / "hosts.jsonl"):
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ips = item.get("ips") or []
+        if isinstance(ips, list) and len(ips) > 2:
+            return True
+    return False
+
+
 def cmd_get_ips(args: argparse.Namespace) -> int:
+    rate_limit = normalized_rate_limit(args.rate_limit)
+    code, httpx_rows = httpx_ip_probe(args.input, rate_limit)
+    if code == 0:
+        ips_rows, host_rows = host_ip_rows_from_httpx(httpx_rows)
+        if ips_rows:
+            append_unique(args.output, ips_rows)
+            append_unique(args.project_dir / "hosts.jsonl", host_rows)
+            append_unique(args.project_dir / "httpx_ip_raw.txt", httpx_rows)
+            return 0
+
     hosts = unique_hosts(read_lines(args.input))
-    ips_rows: list[str] = []
+    ips: set[str] = set()
     host_rows: list[str] = []
 
     for host in hosts:
-        ips = resolve_ips(host)
-        if not ips:
-            host_rows.append(json.dumps({"host": host, "ips": [], "resolved": False}, sort_keys=True))
+        resolved_ips = resolve_ips(host)
+        if not resolved_ips:
+            host_rows.append(json.dumps({"host": host, "ips": [], "resolved": False, "source": "dns-fallback"}, sort_keys=True))
             continue
-        for ip in ips:
-            ips_rows.append(f"{host} {ip}")
-        host_rows.append(json.dumps({"host": host, "ips": ips, "resolved": True}, sort_keys=True))
+        ips.update(resolved_ips)
+        host_rows.append(json.dumps({"host": host, "ips": resolved_ips, "resolved": True, "source": "dns-fallback"}, sort_keys=True))
 
-    append_unique(args.output, ips_rows)
+    append_unique(args.output, sorted(ips))
     append_unique(args.project_dir / "hosts.jsonl", host_rows)
     return 0
 
@@ -102,14 +211,21 @@ def normalized_rate_limit(value: str | None) -> int:
 
 
 def cmd_run_naabu(args: argparse.Namespace) -> int:
-    hosts = unique_hosts(read_lines(args.input))
+    input_rows = read_lines(args.input)
+    host_map = load_ip_to_hosts(args.project_dir)
     ip_to_hosts: dict[str, list[str]] = {}
     host_ip_counts: dict[str, int] = {}
-    for host in hosts:
-        ips = resolve_ips(host)
-        host_ip_counts[host] = len(ips)
+    for value in input_rows:
+        target = extract_host(value)
+        if not target:
+            continue
+        if IP_LITERAL_RE.match(target):
+            ip_to_hosts[target] = host_map.get(target, [target])
+            continue
+        ips = resolve_ips(target)
+        host_ip_counts[target] = len(ips)
         for ip in ips:
-            ip_to_hosts.setdefault(ip, []).append(host)
+            ip_to_hosts.setdefault(ip, []).append(target)
 
     if not ip_to_hosts:
         args.output.write_text("", encoding="utf-8")
@@ -121,7 +237,7 @@ def cmd_run_naabu(args: argparse.Namespace) -> int:
 
     # CDN-backed hosts commonly resolve to several edge IPs. Keep those checks
     # bounded to the HTTP ports instead of doing broad edge-network scans.
-    cdn_like = any(count > 2 for count in host_ip_counts.values())
+    cdn_like = any(count > 2 for count in host_ip_counts.values()) or has_cdn_like_resolution(args.project_dir)
     port_args = ["-p", "80,443"] if cdn_like else ["-top-ports", str(args.top_ports)]
 
     command = [
@@ -288,6 +404,7 @@ def build_parser() -> argparse.ArgumentParser:
     get_ips.add_argument("--input", type=Path, required=True)
     get_ips.add_argument("--output", type=Path, required=True)
     get_ips.add_argument("--project-dir", type=Path, required=True)
+    get_ips.add_argument("--rate-limit", default="")
     get_ips.set_defaults(func=cmd_get_ips)
 
     naabu = subparsers.add_parser("run-naabu", help="Run Naabu once and create port sidecars")

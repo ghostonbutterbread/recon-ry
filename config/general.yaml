@@ -40,15 +40,15 @@ stages:
   get_ips:
     enabled: true
     parallel: false
-    depends_on: [alive_check]
-    description: "Resolve live hosts to IP sidecars"
+    depends_on: [url_discovery]
+    description: "Extract URL-corpus IP sidecars"
     tools:
       - get_ips
 
   port_enrichment:
     enabled: true
     parallel: false
-    depends_on: [alive_check]
+    depends_on: [get_ips]
     description: "Fast port enrichment"
     tools:
       - naabu
@@ -178,8 +178,8 @@ tools:
   get_ips:
     enabled: true
     type: inline
-    command: "python3 {{SCRIPT_DIR}}/scripts/recon_enrichment.py get-ips --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}}"
-    required_files: [alive.txt]
+    command: "python3 {{SCRIPT_DIR}}/scripts/recon_enrichment.py get-ips --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --rate-limit {{RATE_LIMIT}}"
+    required_files: [urls.txt]
     outputs: [ips.txt]
 
   naabu:
@@ -187,7 +187,7 @@ tools:
     type: binary
     top_ports: 1000
     command: "python3 {{SCRIPT_DIR}}/scripts/recon_enrichment.py run-naabu --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --top-ports {{TOP_PORTS}} --rate-limit {{RATE_LIMIT}}"
-    required_files: [alive.txt]
+    required_files: [ips.txt]
     outputs: [naabu.jsonl]
 
   http_fingerprinting:

@@ -237,7 +237,7 @@ stages:
    - httpx (filters live hosts)
 
 4. **IP Enrichment** → `ips.txt`, `hosts.jsonl`
-   - resolve live hosts to IP sidecars without changing `alive.txt`
+   - extract IPs from the full `urls.txt` corpus with httpx `-ip`, falling back to DNS resolution
 
 5. **Port Enrichment** → `naabu.jsonl`, `ports.txt`
    - naabu fast port signal, controlled by config and run once per profile
@@ -264,8 +264,9 @@ All results are saved in the project directory:
 - `wild.txt` - Discovered subdomains
 - `urls.txt` - All URLs (subdomains + discovered URLs)
 - `alive.txt` - Live hosts (filtered by httpx)
-- `ips.txt` - Resolved host/IP mappings
-- `hosts.jsonl` - Host metadata sidecar
+- `ips.txt` - Unique IPs extracted from the URL corpus
+- `hosts.jsonl` - Host/IP metadata sidecar
+- `httpx_ip_raw.txt` - Raw httpx `-ip` output used for IP extraction when available
 - `naabu.jsonl` - Naabu JSON port results
 - `ports.txt` - Compact open-port sidecar
 - `httpx.jsonl` - HTTP fingerprinting JSON
