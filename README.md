@@ -236,14 +236,26 @@ stages:
 3. **Alive Check** → `alive.txt`
    - httpx (filters live hosts)
 
-4. **Parameter Discovery** → `params.txt`
+4. **IP Enrichment** → `ips.txt`, `hosts.jsonl`
+   - resolve live hosts to IP sidecars without changing `alive.txt`
+
+5. **Port Enrichment** → `naabu.jsonl`, `ports.txt`
+   - naabu fast port signal, controlled by config and run once per profile
+
+6. **HTTP Fingerprinting** → `httpx.jsonl`, `waf_hosts.txt`, `unprotected_hosts.txt`
+   - httpx JSON facts for tech, CDN/WAF hints, status, title, and web server
+
+7. **Parameter Discovery** → `params.txt`
    - gau (with parameters) → uro (deduplication)
 
-5. **Directory Enumeration** → `dirs.txt`
+8. **Directory Enumeration** → `dirs.txt`
    - ffuf, dirsearch
 
-6. **Secret Scanning** → `secrets.txt`
+9. **Secret Scanning** → `secrets.txt`
    - nuclei, trufflehog
+
+10. **URL Ranking** → `review_queue.jsonl`
+    - ranked review queue for focused human and agent follow-up
 
 ### Output Files
 
@@ -252,9 +264,17 @@ All results are saved in the project directory:
 - `wild.txt` - Discovered subdomains
 - `urls.txt` - All URLs (subdomains + discovered URLs)
 - `alive.txt` - Live hosts (filtered by httpx)
+- `ips.txt` - Resolved host/IP mappings
+- `hosts.jsonl` - Host metadata sidecar
+- `naabu.jsonl` - Naabu JSON port results
+- `ports.txt` - Compact open-port sidecar
+- `httpx.jsonl` - HTTP fingerprinting JSON
+- `waf_hosts.txt` - Hosts with CDN/WAF/protection hints
+- `unprotected_hosts.txt` - Hosts without obvious CDN/WAF hints
 - `params.txt` - URLs with parameters
 - `dirs.txt` - Discovered directories
 - `secrets.txt` - Found secrets and sensitive data
+- `review_queue.jsonl` - Ranked targets and reasons for focused review
 - `history/TIMESTAMP/` - Historical snapshots of each run
 
 ## Examples
@@ -270,7 +290,7 @@ Output:
 [*] Starting recon with profile: full
 [*] Project directory: /home/user/bounties/hackerone
 [*] Target: hackerone.com
-[*] Stages to run: subdomain_enum url_discovery alive_check param_discovery dir_enum secret_scan
+[*] Stages to run: subdomain_enum url_discovery alive_check get_ips port_enrichment http_fingerprinting param_discovery dir_enum secret_scan url_ranking
 [*] History directory: /home/user/bounties/hackerone/history/20260210_143052
 [*] Running stage: subdomain_enum
 [+] Tool subfinder found 23 new entries
@@ -280,6 +300,8 @@ Output:
   wild.txt       : 157 entries
   urls.txt       : 1243 entries
   alive.txt      : 89 entries
+  httpx.jsonl    : 89 entries
+  review_queue.jsonl: 89 entries
   params.txt     : 456 entries
 ```
 

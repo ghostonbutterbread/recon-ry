@@ -80,6 +80,10 @@ execute_tool() {
 
     # Get tool command
     local command=$(get_tool_info "$tool" "command")
+    local top_ports=$(get_tool_info "$tool" "top_ports")
+    if [[ -z "$top_ports" ]]; then
+        top_ports="1000"
+    fi
 
     # Replace placeholders
     command="${command//\{\{INPUT\}\}/$input_file}"
@@ -87,6 +91,8 @@ execute_tool() {
     command="${command//\{\{DOMAIN\}\}/$domain}"
     command="${command//\{\{URL\}\}/$url}"
     command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
+    command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
+    command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
     command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$HOME/tools/SecretFinder}}"
 
     log_verbose "Running: $tool"

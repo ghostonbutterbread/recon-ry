@@ -49,6 +49,18 @@ tools:
     update_check: "github:projectdiscovery/httpx"
     binary_name: httpx
 
+  http_fingerprinting:
+    install_method: go
+    install_command: "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest"
+    update_check: "github:projectdiscovery/httpx"
+    binary_name: httpx
+
+  naabu:
+    install_method: go
+    install_command: "go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest"
+    update_check: "github:projectdiscovery/naabu"
+    binary_name: naabu
+
   katana:
     install_method: go
     install_command: "go install github.com/projectdiscovery/katana/cmd/katana@latest"

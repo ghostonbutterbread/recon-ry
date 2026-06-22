@@ -9,7 +9,7 @@ copy_outputs_to_history() {
 
     log_debug "Copying outputs to history: $history_dir"
 
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt dorks.txt params_raw.txt; do
+    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt dorks.txt params_raw.txt jsfiles.txt ips.txt hosts.jsonl naabu.jsonl ports.txt httpx.jsonl waf_hosts.txt unprotected_hosts.txt review_queue.jsonl; do
         if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
             cp "$project_dir/$file" "$history_dir/"
             log_debug "Copied $file to history"
@@ -80,7 +80,7 @@ init_project_dir() {
 clean_empty_files() {
     local project_dir="$1"
 
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt params_raw.txt; do
+    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt params_raw.txt jsfiles.txt ips.txt hosts.jsonl naabu.jsonl ports.txt httpx.jsonl waf_hosts.txt unprotected_hosts.txt review_queue.jsonl; do
         if [[ -f "$project_dir/$file" && ! -s "$project_dir/$file" ]]; then
             rm -f "$project_dir/$file"
             log_debug "Removed empty file: $file"
@@ -125,7 +125,7 @@ export_json() {
 EOF
 
     local first=true
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt; do
+    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt jsfiles.txt ips.txt hosts.jsonl naabu.jsonl ports.txt httpx.jsonl waf_hosts.txt unprotected_hosts.txt review_queue.jsonl; do
         if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
             if [[ "$first" == "false" ]]; then
                 echo "," >> "$output_file"

@@ -8,9 +8,13 @@ profiles:
       - subdomain_enum
       - url_discovery
       - alive_check
+      - get_ips
+      - port_enrichment
+      - http_fingerprinting
       - param_discovery
       - dir_enum
       - secret_scan
+      - url_ranking
 
   subs:
     description: "Subdomain enumeration only"
@@ -38,3 +42,11 @@ profiles:
     stages:
       - url_discovery
       - alive_check
+
+  fingerprint:
+    description: "Enrich existing live hosts and rank review targets"
+    stages:
+      - get_ips
+      - port_enrichment
+      - http_fingerprinting
+      - url_ranking

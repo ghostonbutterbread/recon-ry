@@ -278,7 +278,7 @@ show_results_summary() {
     echo ""
     log_info "Results Summary:"
 
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt; do
+    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt ips.txt naabu.jsonl ports.txt httpx.jsonl waf_hosts.txt unprotected_hosts.txt review_queue.jsonl; do
         if [[ -f "$project_dir/$file" ]]; then
             local count=$(wc -l < "$project_dir/$file" 2>/dev/null || echo 0)
             printf "  %-15s: %d entries\n" "$file" "$count"

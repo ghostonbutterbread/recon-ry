@@ -88,6 +88,7 @@ Built-in profiles:
 - `--secrets` - Secret scanning
 - `--dork` - Google dorking
 - `--profile fast` - Quick scan (subs + alive check)
+- `--profile fingerprint` - Enrich existing `alive.txt` with IPs, Naabu ports, HTTP fingerprints, and ranked review queue
 
 Example:
 ```bash
@@ -106,6 +107,8 @@ PROJECT=~/bounties/target
 # View results
 cat $PROJECT/wild.txt        # Subdomains
 cat $PROJECT/alive.txt       # Live hosts
+cat $PROJECT/unprotected_hosts.txt  # Hosts without obvious CDN/WAF hints
+cat $PROJECT/review_queue.jsonl     # Ranked review targets
 cat $PROJECT/params.txt      # Parameters
 
 # Day 2: Re-scan for new assets (anew handles deduplication)
