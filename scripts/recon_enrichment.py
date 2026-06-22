@@ -13,6 +13,7 @@ import json
 import re
 import socket
 import subprocess
+import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -91,21 +92,61 @@ def run_command(command: list[str]) -> int:
         return 127
 
 
+def normalized_rate_limit(value: str | None) -> int:
+    if value in {None, ""}:
+        return 0
+    try:
+        return max(int(float(value)), 0)
+    except ValueError:
+        return 0
+
+
 def cmd_run_naabu(args: argparse.Namespace) -> int:
+    hosts = unique_hosts(read_lines(args.input))
+    ip_to_hosts: dict[str, list[str]] = {}
+    host_ip_counts: dict[str, int] = {}
+    for host in hosts:
+        ips = resolve_ips(host)
+        host_ip_counts[host] = len(ips)
+        for ip in ips:
+            ip_to_hosts.setdefault(ip, []).append(host)
+
+    if not ip_to_hosts:
+        args.output.write_text("", encoding="utf-8")
+        return 0
+
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+        handle.write("\n".join(sorted(ip_to_hosts)) + "\n")
+        host_file = Path(handle.name)
+
+    # CDN-backed hosts commonly resolve to several edge IPs. Keep those checks
+    # bounded to the HTTP ports instead of doing broad edge-network scans.
+    cdn_like = any(count > 2 for count in host_ip_counts.values())
+    port_args = ["-p", "80,443"] if cdn_like else ["-top-ports", str(args.top_ports)]
+
     command = [
         "naabu",
         "-list",
-        str(args.input),
-        "-top-ports",
-        str(args.top_ports),
+        str(host_file),
+        *port_args,
         "-json",
         "-silent",
         "-o",
         str(args.output),
+        "-retries",
+        "1",
+        "-warm-up-time",
+        "0",
     ]
-    code = run_command(command)
-    if code != 0:
-        return code
+    rate_limit = normalized_rate_limit(args.rate_limit)
+    if rate_limit:
+        command.extend(["-rate", str(rate_limit)])
+    try:
+        code = run_command(command)
+        if code != 0:
+            return code
+    finally:
+        host_file.unlink(missing_ok=True)
 
     ports_rows: list[str] = []
     for line in read_lines(args.output):
@@ -117,7 +158,9 @@ def cmd_run_naabu(args: argparse.Namespace) -> int:
         port = item.get("port")
         protocol = item.get("protocol") or item.get("scheme") or "tcp"
         if host and port:
-            ports_rows.append(f"{host}:{port}/{protocol}")
+            mapped_hosts = ip_to_hosts.get(str(host), [str(host)])
+            for mapped_host in mapped_hosts:
+                ports_rows.append(f"{mapped_host}:{port}/{protocol}")
 
     append_unique(args.project_dir / "ports.txt", ports_rows)
     return 0
@@ -138,6 +181,9 @@ def cmd_run_httpx(args: argparse.Namespace) -> int:
         "-o",
         str(args.output),
     ]
+    rate_limit = normalized_rate_limit(args.rate_limit)
+    if rate_limit:
+        command.extend(["-rate-limit", str(rate_limit)])
     code = run_command(command)
     if code != 0:
         return code
@@ -249,12 +295,14 @@ def build_parser() -> argparse.ArgumentParser:
     naabu.add_argument("--output", type=Path, required=True)
     naabu.add_argument("--project-dir", type=Path, required=True)
     naabu.add_argument("--top-ports", default="1000")
+    naabu.add_argument("--rate-limit", default="")
     naabu.set_defaults(func=cmd_run_naabu)
 
     httpx = subparsers.add_parser("run-httpx", help="Run httpx JSON fingerprinting sidecars")
     httpx.add_argument("--input", type=Path, required=True)
     httpx.add_argument("--output", type=Path, required=True)
     httpx.add_argument("--project-dir", type=Path, required=True)
+    httpx.add_argument("--rate-limit", default="")
     httpx.set_defaults(func=cmd_run_httpx)
 
     rank = subparsers.add_parser("rank-urls", help="Rank URLs for focused review")

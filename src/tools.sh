@@ -81,6 +81,7 @@ execute_tool() {
     # Get tool command
     local command=$(get_tool_info "$tool" "command")
     local top_ports=$(get_tool_info "$tool" "top_ports")
+    local rate_limit=$(get_tool_rate_limit "$tool")
     if [[ -z "$top_ports" ]]; then
         top_ports="1000"
     fi
@@ -93,9 +94,13 @@ execute_tool() {
     command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
     command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
     command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
+    command="${command//\{\{RATE_LIMIT\}\}/$rate_limit}"
     command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$HOME/tools/SecretFinder}}"
 
     log_verbose "Running: $tool"
+    if [[ -n "$rate_limit" && "$rate_limit" != "0" ]]; then
+        log_verbose "Rate limit for $tool: $rate_limit req/s"
+    fi
     log_debug "Command: $command"
 
     # Execute command
@@ -116,6 +121,38 @@ execute_tool() {
         log_warning "Tool $tool failed with exit code $exit_code"
         return 1
     fi
+}
+
+# Get a per-tool request rate limit from the project rate_limit.conf.
+# Format:
+#   default=2
+#   httpx=2
+#   naabu=1
+get_tool_rate_limit() {
+    local tool="$1"
+    local conf="${PROJECT_DIR:-}/rate_limit.conf"
+    local default_rate=""
+    local tool_rate=""
+
+    if [[ -z "${PROJECT_DIR:-}" || ! -f "$conf" ]]; then
+        echo "0"
+        return 0
+    fi
+
+    while IFS='=' read -r key value; do
+        key="${key%%#*}"
+        value="${value%%#*}"
+        key="$(echo "$key" | xargs)"
+        value="$(echo "$value" | xargs)"
+        [[ -z "$key" || -z "$value" ]] && continue
+        if [[ "$key" == "default" ]]; then
+            default_rate="$value"
+        elif [[ "$key" == "$tool" ]]; then
+            tool_rate="$value"
+        fi
+    done < "$conf"
+
+    echo "${tool_rate:-${default_rate:-0}}"
 }
 
 # Run tool and append output to file using anew
@@ -185,7 +222,7 @@ run_tools_parallel() {
     local failed=0
     for pid in "${pids[@]}"; do
         if ! wait "$pid"; then
-            ((failed++))
+            failed=$((failed + 1))
         fi
     done
 
@@ -202,7 +239,7 @@ run_tools_sequential() {
         IFS=':' read -r tool_name input_file output_file domain url <<< "$tool"
 
         if ! run_tool_with_anew "$tool_name" "$input_file" "$output_file" "$domain" "$url"; then
-            ((failed++))
+            failed=$((failed + 1))
         fi
     done
 

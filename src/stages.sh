@@ -85,14 +85,14 @@ execute_stage() {
         # Check if tool is enabled
         if ! is_tool_enabled "$tool"; then
             log_debug "Tool $tool is disabled, skipping"
-            ((skipped_tools++))
+            skipped_tools=$((skipped_tools + 1))
             continue
         fi
 
         # Check if required files exist
         if ! check_required_files "$tool" "$project_dir"; then
             log_debug "Tool $tool missing required files, skipping"
-            ((skipped_tools++))
+            skipped_tools=$((skipped_tools + 1))
             continue
         fi
 
@@ -213,7 +213,7 @@ run_recon_project() {
     local failed_stages=0
     for stage in $stages; do
         if ! execute_stage "$stage" "$project_dir" "$domain" "$url"; then
-            ((failed_stages++))
+            failed_stages=$((failed_stages + 1))
             log_error "Stage $stage failed"
         fi
 

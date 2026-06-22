@@ -186,7 +186,7 @@ tools:
     enabled: true
     type: binary
     top_ports: 1000
-    command: "python3 {{SCRIPT_DIR}}/scripts/recon_enrichment.py run-naabu --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --top-ports {{TOP_PORTS}}"
+    command: "python3 {{SCRIPT_DIR}}/scripts/recon_enrichment.py run-naabu --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --top-ports {{TOP_PORTS}} --rate-limit {{RATE_LIMIT}}"
     required_files: [alive.txt]
     outputs: [naabu.jsonl]
 
@@ -198,7 +198,7 @@ tools:
     cdn_detect: true
     waf_tagging: true
     filter_mode: tag_only
-    command: "python3 {{SCRIPT_DIR}}/scripts/recon_enrichment.py run-httpx --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}}"
+    command: "python3 {{SCRIPT_DIR}}/scripts/recon_enrichment.py run-httpx --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --rate-limit {{RATE_LIMIT}}"
     required_files: [alive.txt]
     outputs: [httpx.jsonl]
 
