@@ -283,6 +283,26 @@ print(value)
 "
 }
 
+# Get install-time dependencies for a configured tool.
+get_install_dependencies() {
+    local tool="$1"
+    echo "$INSTALL_CONFIG_JSON" | python3 -c "
+import sys
+import json
+data = json.load(sys.stdin)
+deps = data.get('tools', {}).get('$tool', {}).get('dependencies', [])
+print(' '.join(str(dep) for dep in deps))
+"
+}
+
+# Check whether install.yaml has metadata for a tool/dependency name.
+has_install_tool() {
+    local tool="$1"
+    local method
+    method=$(get_install_info "$tool" "install_method")
+    [[ -n "$method" ]]
+}
+
 # Check if tool is enabled (from state.yaml)
 is_tool_enabled() {
     local tool="$1"

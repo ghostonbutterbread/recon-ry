@@ -16,7 +16,7 @@ tools:
     install_method: script
     install_command: "# Bundled script - no installation needed"
     binary_path: "scripts/param_recon.sh"
-    dependencies: [waybackurls, katana, hakrawler, uro]
+    dependencies: [waybackurls, waymore, katana, hakrawler, gospider, uro]
 
   dork_scan:
     install_method: inline
@@ -97,6 +97,13 @@ tools:
     update_check: "github:tomnomnom/waybackurls"
     binary_name: waybackurls
 
+  waymore:
+    install_method: pip
+    install_command: "pip3 install waymore"
+    update_check: "pypi:waymore"
+    binary_name: waymore
+    check_command: "command -v waymore"
+
   gau:
     install_method: go
     install_command: "go install github.com/lc/gau/v2/cmd/gau@latest"
@@ -108,6 +115,19 @@ tools:
     install_command: "go install github.com/hakluke/hakrawler@latest"
     update_check: "github:hakluke/hakrawler"
     binary_name: hakrawler
+
+  gospider:
+    install_method: go
+    install_command: "go install github.com/jaeles-project/gospider@latest"
+    update_check: "github:jaeles-project/gospider"
+    binary_name: gospider
+
+  scrapling:
+    install_method: pip
+    install_command: "pip3 install scrapling"
+    update_check: "pypi:scrapling"
+    binary_name: scrapling
+    check_command: "python3 -c 'import scrapling'"
 
   uro:
     install_method: pip

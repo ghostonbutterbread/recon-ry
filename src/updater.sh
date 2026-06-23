@@ -8,15 +8,49 @@ is_tool_installed() {
     check_tool_exists "$tool"
 }
 
+install_tool_dependencies() {
+    local tool="$1"
+    local dep
+
+    for dep in $(get_install_dependencies "$tool"); do
+        if has_install_tool "$dep"; then
+            if ! is_tool_installed "$dep"; then
+                log_info "Installing dependency $dep for $tool..."
+                install_tool "$dep" || return 1
+            fi
+        elif ! command -v "$dep" &> /dev/null; then
+            log_error "Missing system dependency $dep for $tool"
+            return 1
+        fi
+    done
+
+    return 0
+}
+
 # Install a tool
 install_tool() {
     local tool="$1"
 
     local install_method=$(get_install_info "$tool" "install_method")
 
+    if [[ -z "$install_method" ]]; then
+        log_error "No install metadata defined for $tool"
+        return 1
+    fi
+
+    if ! install_tool_dependencies "$tool"; then
+        log_error "Failed to install dependencies for $tool"
+        return 1
+    fi
+
     # Skip inline commands - they don't need installation
     if [[ "$install_method" == "inline" ]]; then
         log_verbose "Skipping $tool (inline command - no installation needed)"
+        return 0
+    fi
+
+    if [[ "$install_method" == "script" ]]; then
+        log_verbose "Skipping $tool (bundled script - dependencies installed separately)"
         return 0
     fi
 
@@ -138,9 +172,10 @@ update_tool() {
 
     local install_method=$(get_install_info "$tool" "install_method")
 
-    # Skip inline commands
-    if [[ "$install_method" == "inline" ]]; then
-        log_verbose "Skipping $tool (inline command)"
+    # Skip tools that are provided by the shell or the repo itself. Their
+    # dependencies are installed by install_tool_dependencies().
+    if [[ "$install_method" == "inline" || "$install_method" == "script" ]]; then
+        log_verbose "Skipping $tool ($install_method command)"
         return 0
     fi
 
