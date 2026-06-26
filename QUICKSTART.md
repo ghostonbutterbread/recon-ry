@@ -1,82 +1,106 @@
-# Quick Start Guide
+# Quick Start
 
-Get up and running with Claude Recon Framework in 5 minutes!
+Get running with `recon-ry` in a few minutes.
 
-## Installation
+## 1) Install Prerequisites
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/claude-recon.git
-cd claude-recon
+sudo apt update
+sudo apt install -y curl jq git python3 python3-pip golang-go
+pip3 install pyyaml
+```
 
-# Run setup (checks dependencies)
+Add Go tools to `PATH`:
+
+```bash
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+## 2) Clone and Setup
+
+```bash
+git clone https://github.com/Ryushe/recon-ry
+cd recon-ry
+chmod +x main.sh
+
+# Optional sanity check
 ./setup.sh
 
-# Install reconnaissance tools
+# Verify tool status
+./main.sh check
+
+# Install/update tools
 ./main.sh update
 ```
 
-## First Scan
-
-### Option 1: Quick Test (No Project Directory)
+## 3) Initialize a Project
 
 ```bash
-# Subdomain enumeration to stdout
-./main.sh recon --subs --url example.com
+./main.sh init --project ~/bounties/example
 ```
 
-Output goes directly to terminal.
+This creates project inputs and `rate_limit.conf` (or regenerates config when seed files already exist).
 
-### Option 2: Full Scan with Project Directory
+## 4) Run a First Scan
 
 ```bash
-# Create project and run full scan
-./main.sh recon --full --project ~/recon/example --url example.com
+./main.sh recon --full --project ~/bounties/example --url example.com -vv
 ```
 
-Results saved to:
-- `~/recon/example/wild.txt` - Subdomains
-- `~/recon/example/urls.txt` - All URLs
-- `~/recon/example/alive.txt` - Live hosts
-- `~/recon/example/params.txt` - URLs with parameters
-- `~/recon/example/history/TIMESTAMP/` - Historical snapshot
+## 5) Check Outputs
+
+```bash
+ls -la ~/bounties/example
+ls -la ~/bounties/example/history
+ls -la ~/bounties/example/eyewitness/history
+```
+
+Expected key paths:
+- `wild.txt`, `urls.txt`, `alive.txt`, `params.txt`, `secrets.txt`
+- `dirs_status/*.txt` (ffuf results split by status code)
+- `history/<m-d-YYYY>/...` (run deltas)
+- `eyewitness/history/<m-d-YYYY>/{alive,params,custom_input}`
 
 ## Common Commands
 
 ```bash
-# Full reconnaissance
+# Full recon
 ./main.sh recon --full --project ~/projects/target --url target.com
 
-# Subdomain enumeration only
+# Subdomain only
 ./main.sh recon --subs --project ~/projects/target --url target.com
 
-# Secret scanning
+# Fast profile (subs + alive)
+./main.sh recon --fast --project ~/projects/target --url target.com
+
+# URL discovery + alive (requires wild.txt)
+./main.sh recon --urls --project ~/projects/target
+
+# EyeWitness only (existing project inputs)
+./main.sh recon --project ~/projects/target --eye
+
+# EyeWitness with direct input
+./main.sh recon --project ~/projects/target --eye https://app.target.com
+./main.sh recon --project ~/projects/target --eye ~/targets/alive.txt
+
+# Secret scan workflow
 ./main.sh secrets --project ~/projects/target
 
-# Check which tools are installed
-./main.sh check
+# Directory enum only
+./main.sh recon --dir --project ~/projects/target
 
-# Update all tools
-./main.sh update
-
-# Configure tools (interactive menu)
-./main.sh enable_tools
-
-# Configure stages (interactive menu)
-./main.sh set_stages
+# Dry run
+./main.sh recon --full --project ~/projects/target --url target.com --dry-run
 ```
 
-## Verbosity Levels
+## Background Dir Scan Management
 
 ```bash
-# Default (quiet)
-./main.sh recon --url example.com
+# List background scans
+./main.sh scans --project ~/projects/target
 
-# Verbose (show tool names and progress)
-./main.sh recon --url example.com -v
-
-# Very verbose (show all tool output)
-./main.sh recon --url example.com -vv
+# Stop background scans
+./main.sh scans --project ~/projects/target --kill
 ```
 
 ## Profiles
@@ -95,138 +119,43 @@ Example:
 ./main.sh recon --profile fast --project ~/recon/target --url target.com
 ```
 
-## Workflow Examples
-
-### Bug Bounty Initial Recon
+## Verbosity and Timeouts
 
 ```bash
-# Day 1: Full scan
-PROJECT=~/bounties/target
-./main.sh recon --full -v --project $PROJECT --url target.com
+# Verbose
+./main.sh recon --subs --url example.com -v
 
-# View results
-cat $PROJECT/wild.txt        # Subdomains
-cat $PROJECT/alive.txt       # Live hosts
-cat $PROJECT/unprotected_hosts.txt  # Hosts without obvious CDN/WAF hints
-cat $PROJECT/review_queue.jsonl     # Ranked review targets
-cat $PROJECT/params.txt      # Parameters
+# Very verbose
+./main.sh recon --subs --url example.com -vv
 
-# Day 2: Re-scan for new assets (anew handles deduplication)
-./main.sh recon --full -v --project $PROJECT --url target.com
+# Override per-tool timeout for this run (0 = no timeout)
+./main.sh recon --full --project ~/projects/target --timeout 600
 ```
 
-### Focused Scanning
+## Review Queue Outputs
 
 ```bash
-# Only discover URLs from known subdomains
-echo "api.target.com" > ~/recon/wild.txt
-./main.sh recon --profile urls --project ~/recon
+PROJECT=~/projects/target
+cat "$PROJECT/unprotected_hosts.txt"
+cat "$PROJECT/review_queue.jsonl"
 ```
-
-### Test Before Running
-
-```bash
-# Dry-run mode (see what would execute)
-./main.sh recon --dry-run --full --project ~/test --url example.com
-```
-
-## Interactive Configuration
-
-### Enable/Disable Tools
-
-```bash
-./main.sh enable_tools
-```
-
-Navigate with arrow keys:
-- **Space** - Toggle tool on/off
-- **Enter** - Save changes
-- **Esc** - Cancel
-
-### Configure Stages
-
-```bash
-./main.sh set_stages
-```
-
-Select which stages to run and whether they should execute in parallel.
 
 ## Troubleshooting
 
-### Tools Not Found
-
 ```bash
-# Add Go bin to PATH
-export PATH=$PATH:$(go env GOPATH)/bin
-echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.bashrc
-source ~/.bashrc
-
-# Re-install tools
-./main.sh update
-```
-
-### No Results
-
-```bash
-# Check if tools are working
+# Check install status
 ./main.sh check
 
-# Test individual tool
-subfinder -d example.com
-
-# Use verbose mode
-./main.sh recon --subs -vv --url example.com
-```
-
-### Configuration Errors
-
-```bash
-# Validate YAML syntax
+# Validate config syntax
 python3 -c "import yaml; yaml.safe_load(open('config/general.yaml'))"
+python3 -c "import yaml; yaml.safe_load(open('config/profiles.yaml'))"
+python3 -c "import yaml; yaml.safe_load(open('config/install.yaml'))"
+
+# Run offline self-test
+./main.sh selftest
 ```
 
-## File Structure
+## Next
 
-```
-~/recon/project/
-├── wild.txt              # Discovered subdomains
-├── urls.txt              # All URLs (subs + crawled)
-├── alive.txt             # Live hosts
-├── params.txt            # URLs with parameters
-├── dirs.txt              # Discovered directories
-├── secrets.txt           # Found secrets
-└── history/
-    └── 20260210_143052/  # Timestamped snapshot
-        ├── wild.txt
-        ├── urls.txt
-        └── ...
-```
-
-## Next Steps
-
-1. **Read the full documentation**: [README.md](README.md)
-2. **See real-world examples**: [EXAMPLES.md](EXAMPLES.md)
-3. **Learn to add tools**: [CONTRIBUTING.md](CONTRIBUTING.md)
-4. **Customize configs**: Edit `config/*.yaml` files
-
-## Tips
-
-1. **Start small**: Begin with `--subs` before running `--full`
-2. **Use dry-run**: Test with `--dry-run` first
-3. **Monitor progress**: Use `-v` or `-vv` for visibility
-4. **Incremental scans**: Re-running adds only new findings (via anew)
-5. **Custom profiles**: Create your own in `config/profiles.yaml`
-
-## Help
-
-```bash
-# Show help
-./main.sh --help
-
-# Get tool status
-./main.sh check
-```
-
-For issues or questions, check [README.md](README.md) or open an issue on GitHub.
-
-Happy Hunting! 🎯
+- Full reference: [README.md](README.md)
+- Usage scenarios: [EXAMPLES.md](EXAMPLES.md)

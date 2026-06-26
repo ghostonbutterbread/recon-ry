@@ -2,17 +2,153 @@
 
 # Output management module
 
-# Copy outputs to history directory
+HISTORY_BASELINE_DIR=""
+
+get_history_output_files() {
+    if [[ -n "${GENERAL_CONFIG_JSON:-}" ]]; then
+        echo "$GENERAL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+outputs = set()
+for tool in data.get('tools', {}).values():
+    outs = tool.get('outputs', []) or []
+    if isinstance(outs, str):
+        outs = [outs]
+    for o in outs:
+        if o and o not in ('wild.txt', 'urls.txt'):
+            outputs.add(o)
+print(' '.join(sorted(outputs)))
+"
+    else
+        # Fallback if config isn't loaded for some reason
+        echo "alive.txt params.txt params_raw.txt jsfiles.txt secrets.txt dirs.txt dorks.txt"
+    fi
+}
+
+get_dirs_status_files() {
+    local project_dir="$1"
+    if [[ -d "$project_dir/dirs_status" ]]; then
+        find "$project_dir/dirs_status" -maxdepth 1 -type f -name '*.txt' -printf 'dirs_status/%f\n' | sort
+    fi
+}
+
+# Initialize baseline for history deltas (snapshot of current project outputs)
+init_history_baseline() {
+    local project_dir="$1"
+    local history_dir="$2"
+
+    HISTORY_BASELINE_DIR="$history_dir/.baseline"
+    rm -rf "$HISTORY_BASELINE_DIR"
+    mkdir -p "$HISTORY_BASELINE_DIR"
+
+    log_debug "Initializing history baseline: $HISTORY_BASELINE_DIR"
+
+    local files
+    files=$(get_history_output_files)
+    for file in $files; do
+        local base="$HISTORY_BASELINE_DIR/$file"
+        mkdir -p "$(dirname "$base")"
+        if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
+            cp "$project_dir/$file" "$base"
+        else
+            # Ensure baseline exists as empty file for consistent diffing
+            : > "$base"
+        fi
+    done
+
+    local status_files
+    status_files=$(get_dirs_status_files "$project_dir")
+    for file in $status_files; do
+        local src="$project_dir/$file"
+        local base="$HISTORY_BASELINE_DIR/$file"
+        mkdir -p "$(dirname "$base")"
+        if [[ -f "$src" && -s "$src" ]]; then
+            cp "$src" "$base"
+        else
+            : > "$base"
+        fi
+    done
+}
+
+# Copy only new outputs (relative to baseline) to history directory
 copy_outputs_to_history() {
     local project_dir="$1"
     local history_dir="$2"
 
-    log_debug "Copying outputs to history: $history_dir"
+    log_debug "Copying new outputs to history: $history_dir"
 
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt dorks.txt params_raw.txt jsfiles.txt ips.txt hosts.jsonl httpx_ip_raw.txt naabu.jsonl ports.txt httpx.jsonl waf_hosts.txt unprotected_hosts.txt review_queue.jsonl; do
-        if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
-            cp "$project_dir/$file" "$history_dir/"
-            log_debug "Copied $file to history"
+    local files
+    files=$(get_history_output_files)
+    for file in $files; do
+        local src="$project_dir/$file"
+        local dest="$history_dir/$file"
+        local base="$HISTORY_BASELINE_DIR/$file"
+        local tmp="$dest.tmp"
+
+        if [[ -f "$src" && -s "$src" ]]; then
+            # If baseline is missing, fallback to full copy
+            if [[ ! -f "$base" ]]; then
+                merge_with_anew "$src" "$dest"
+                log_debug "Copied $file to history (no baseline)"
+                continue
+            fi
+
+            awk '
+                NR==FNR {
+                    if ($0 != "") seen[$0]=1
+                    next
+                }
+                {
+                    if ($0 != "" && !seen[$0] && !added[$0]++) print $0
+                }
+            ' "$base" "$src" > "$tmp"
+
+            if [[ -s "$tmp" ]]; then
+                merge_with_anew "$tmp" "$dest"
+                rm -f "$tmp"
+                log_debug "Appended new entries for $file to history"
+            else
+                rm -f "$tmp"
+                log_debug "No new entries for $file"
+            fi
+        fi
+    done
+
+    local status_files
+    status_files=$(get_dirs_status_files "$project_dir")
+    for file in $status_files; do
+        local src="$project_dir/$file"
+        local dest="$history_dir/$file"
+        local base="$HISTORY_BASELINE_DIR/$file"
+        local tmp="$dest.tmp"
+
+        if [[ -f "$src" && -s "$src" ]]; then
+            if [[ ! -f "$base" ]]; then
+                mkdir -p "$(dirname "$dest")"
+                merge_with_anew "$src" "$dest"
+                log_debug "Copied $file to history (no baseline)"
+                continue
+            fi
+
+            mkdir -p "$(dirname "$dest")"
+            awk '
+                NR==FNR {
+                    if ($0 != "") seen[$0]=1
+                    next
+                }
+                {
+                    if ($0 != "" && !seen[$0] && !added[$0]++) print $0
+                }
+            ' "$base" "$src" > "$tmp"
+
+            if [[ -s "$tmp" ]]; then
+                merge_with_anew "$tmp" "$dest"
+                rm -f "$tmp"
+                log_debug "Appended new entries for $file to history"
+            else
+                rm -f "$tmp"
+                log_debug "No new entries for $file"
+            fi
         fi
     done
 }
@@ -48,13 +184,39 @@ merge_with_anew() {
 # Create global URLs file (merge wild.txt and urls.txt)
 create_global_urls() {
     local project_dir="$1"
-    local global_urls="$project_dir/urls.txt"
+    local temp_dir="$project_dir/.tmp_run"
+    local global_urls="$temp_dir/urls.txt"
+    local seed_url="$temp_dir/url_seed.txt"
+    local temp_wild="$temp_dir/wild.txt"
+    local preserved_urls=""
 
-    log_debug "Creating global URLs file"
+    log_debug "Creating global URLs file (temp)"
+    mkdir -p "$temp_dir"
 
-    # Merge wild.txt into urls.txt
+    # Preserve URLs already discovered during this run before rebuilding aggregate.
+    if [[ -f "$global_urls" && -s "$global_urls" ]]; then
+        preserved_urls=$(mktemp)
+        cp "$global_urls" "$preserved_urls"
+    fi
+
+    : > "$global_urls"
+    if [[ -f "$seed_url" && -s "$seed_url" ]]; then
+        merge_with_anew "$seed_url" "$global_urls"
+    fi
+    if [[ -f "$project_dir/urls.txt" && -s "$project_dir/urls.txt" ]]; then
+        merge_with_anew "$project_dir/urls.txt" "$global_urls"
+    fi
     if [[ -f "$project_dir/wild.txt" && -s "$project_dir/wild.txt" ]]; then
         merge_with_anew "$project_dir/wild.txt" "$global_urls"
+    fi
+    if [[ -f "$temp_wild" && -s "$temp_wild" ]]; then
+        merge_with_anew "$temp_wild" "$global_urls"
+    fi
+    if [[ -n "$preserved_urls" ]]; then
+        if [[ -s "$preserved_urls" ]]; then
+            merge_with_anew "$preserved_urls" "$global_urls"
+        fi
+        rm -f "$preserved_urls"
     fi
 }
 
@@ -125,7 +287,9 @@ export_json() {
 EOF
 
     local first=true
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt jsfiles.txt ips.txt hosts.jsonl httpx_ip_raw.txt naabu.jsonl ports.txt httpx.jsonl waf_hosts.txt unprotected_hosts.txt review_queue.jsonl; do
+    local files
+    files="wild.txt urls.txt $(get_history_output_files)"
+    for file in $files; do
         if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
             if [[ "$first" == "false" ]]; then
                 echo "," >> "$output_file"

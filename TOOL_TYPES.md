@@ -81,33 +81,33 @@ tools:
 ### 3. Script Tools
 **What**: Custom scripts or tools at specific file paths
 
-**Examples**: dirsearch, custom Python/Bash scripts
+**Examples**: custom Python/Bash scripts
 
 **Config**:
 ```yaml
 # config/general.yaml
 tools:
-  dirsearch:
+  custom_script:
     enabled: true
     type: script  # Script at specific path
-    command: "python3 ~/tools/dirsearch/dirsearch.py -u {{URL}} -e php,asp,aspx"
-    required_files: [alive.txt]
-    outputs: [dirs.txt]
+    command: "bash ~/tools/custom_script.sh {{INPUT}} {{OUTPUT}}"
+    required_files: [urls.txt]
+    outputs: [custom.txt]
 ```
 
 ```yaml
 # config/install.yaml
 tools:
-  dirsearch:
+  custom_script:
     install_method: git
-    install_command: "git clone https://github.com/maurosoria/dirsearch.git ~/tools/dirsearch"
-    binary_name: dirsearch
-    binary_path: "~/tools/dirsearch/dirsearch.py"
+    install_command: "git clone https://github.com/example/custom_script.git ~/tools/custom_script"
+    binary_name: custom_script
+    binary_path: "~/tools/custom_script/custom_script.sh"
 ```
 
 **How it works**:
 - Checks if script file exists and is executable
-- Can specify custom path: `~/tools/dirsearch/dirsearch.py`
+- Can specify custom path: `~/tools/custom_script/custom_script.sh`
 - Shows as ✓ or ✗ based on file existence
 
 ---

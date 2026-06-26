@@ -35,6 +35,7 @@ tui_cleanup() {
 tui_draw_menu() {
     local title="$1"
     local description="$2"
+    local show_checks="${3:-true}"
 
     # Move to home and clear
     echo -ne "$MOVE_HOME"
@@ -53,7 +54,10 @@ tui_draw_menu() {
     # Draw items
     for i in "${!TUI_ITEMS[@]}"; do
         local item="${TUI_ITEMS[$i]}"
-        local state="${TUI_STATES[$i]}"
+        local state=""
+        if [[ "${#TUI_STATES[@]}" -gt 0 ]]; then
+            state="${TUI_STATES[$i]}"
+        fi
 
         # Clear line
         echo -ne "$CLEAR_LINE"
@@ -66,10 +70,12 @@ tui_draw_menu() {
         fi
 
         # Checkbox
-        if [[ "$state" == "true" ]]; then
-            echo -ne "${GREEN}[✓]${NC} "
-        else
-            echo -ne "${RED}[ ]${NC} "
+        if [[ "$show_checks" == "true" ]]; then
+            if [[ "$state" == "true" ]]; then
+                echo -ne "${GREEN}[✓]${NC} "
+            else
+                echo -ne "${RED}[ ]${NC} "
+            fi
         fi
 
         # Item name
@@ -80,6 +86,50 @@ tui_draw_menu() {
     echo -e "${CYAN}Controls:${NC} ↑/↓ Navigate | Space Select/Deselect | Enter Save | Esc Cancel"
 }
 
+# Draw list menu (no checkboxes)
+tui_draw_list_menu() {
+    local title="$1"
+    local description="$2"
+    local controls="${3:-↑/↓ Navigate | Enter Select | Esc Back}"
+
+    # Move to home and clear
+    echo -ne "$MOVE_HOME"
+
+    # Draw title
+    echo -e "${CYAN}╔══════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CYAN}║${NC} ${YELLOW}${title}${NC}"
+    echo -e "${CYAN}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    if [[ -n "$description" ]]; then
+        if [[ "$description" == *$'\n'* ]]; then
+            local first_line="${description%%$'\n'*}"
+            local second_line="${description#*$'\n'}"
+            echo -e "${BLUE}${first_line}${NC}"
+            echo -e "${MAGENTA}${second_line}${NC}"
+        else
+            echo -e "${BLUE}${description}${NC}"
+        fi
+        echo ""
+    fi
+
+    # Draw items
+    for i in "${!TUI_ITEMS[@]}"; do
+        local item="${TUI_ITEMS[$i]}"
+
+        echo -ne "$CLEAR_LINE"
+        if [[ $i -eq $TUI_SELECTED ]]; then
+            echo -ne "${GREEN}> ${NC}"
+        else
+            echo -ne "  "
+        fi
+        echo -e "$item"
+    done
+
+    echo ""
+    echo -e "${CYAN}Controls:${NC} ${controls}"
+}
+
 # Read single key
 read_key() {
     local key
@@ -87,16 +137,27 @@ read_key() {
 
     # Handle escape sequences (arrow keys)
     if [[ $key == $'\x1b' ]]; then
-        read -rsn2 key
-        case "$key" in
-            '[A') echo "up" ;;
-            '[B') echo "down" ;;
-            *) echo "esc" ;;
+        local seq=""
+        local next=""
+        # Read the next byte with a slightly longer timeout for tmux
+        if IFS= read -rsn1 -t 0.2 next; then
+            seq+="$next"
+            # Read remaining bytes quickly
+            while IFS= read -rsn1 -t 0.02 next; do
+                seq+="$next"
+            done
+        fi
+        case "$seq" in
+            *"[A"*|*"OA"*) echo "up" ;;
+            *"[B"*|*"OB"*) echo "down" ;;
+            "") echo "esc" ;;
+            *) echo "other" ;;
         esac
     else
         case "$key" in
             ' ') echo "space" ;;
             '') echo "enter" ;;
+            'x'|'X') echo "x" ;;
             'q'|'Q') echo "esc" ;;
             *) echo "other" ;;
         esac
@@ -147,6 +208,44 @@ tui_run_menu() {
                 # Cancel without saving
                 tui_cleanup
                 TUI_MODIFIED=0
+                return 1
+                ;;
+        esac
+    done
+}
+
+# Run TUI list menu (no checkboxes)
+tui_run_list_menu() {
+    local title="$1"
+    local description="$2"
+
+    tui_init
+
+    while true; do
+        tui_draw_menu "$title" "$description" "false"
+
+        local key
+        key=$(read_key)
+
+        case "$key" in
+            up)
+                ((TUI_SELECTED--))
+                if [[ $TUI_SELECTED -lt 0 ]]; then
+                    TUI_SELECTED=$((${#TUI_ITEMS[@]} - 1))
+                fi
+                ;;
+            down)
+                ((TUI_SELECTED++))
+                if [[ $TUI_SELECTED -ge ${#TUI_ITEMS[@]} ]]; then
+                    TUI_SELECTED=0
+                fi
+                ;;
+            enter)
+                tui_cleanup
+                return 0
+                ;;
+            esc)
+                tui_cleanup
                 return 1
                 ;;
         esac
@@ -222,13 +321,8 @@ tui_set_stages() {
         if [[ $TUI_MODIFIED -eq 1 ]]; then
             log_info "Saving stage configuration..."
 
-            # Save changes
-            local i=0
-            for stage in $all_stages; do
-                local state="${TUI_STATES[$i]}"
-                update_stage_status "$stage" "$state"
-                ((i++))
-            done
+            # Save changes using batch update
+            batch_update_stage_status "${TUI_STATES[@]}"
 
             log_success "Stage configuration saved!"
 
