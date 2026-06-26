@@ -53,6 +53,30 @@ stages:
     tools:
       - httpx
 
+  get_ips:
+    enabled: true
+    parallel: false
+    depends_on: [url_discovery]
+    description: "Extract URL-corpus IP sidecars"
+    tools:
+      - get_ips
+
+  port_enrichment:
+    enabled: true
+    parallel: false
+    depends_on: [get_ips]
+    description: "Fast port enrichment"
+    tools:
+      - naabu
+
+  http_fingerprinting:
+    enabled: true
+    parallel: false
+    depends_on: [alive_check]
+    description: "HTTP technology, CDN, and WAF fingerprinting"
+    tools:
+      - http_fingerprinting
+
   eyewitness:
     parallel: false
     description: "Visual reconnaissance (screenshots and report)"
@@ -90,6 +114,14 @@ stages:
     description: "Google dorking"
     tools:
       - dork_scan
+
+  url_ranking:
+    enabled: true
+    parallel: false
+    depends_on: [http_fingerprinting]
+    description: "Rank live URLs for focused manual and agent review"
+    tools:
+      - url_ranking
 
 # Tool definitions
 tools:
@@ -142,7 +174,7 @@ tools:
 
   gau:
     type: binary
-    command: "cat {{INPUT}} | gau --threads 5 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
+    command: "cat {{INPUT}} | gau --threads 1 --blacklist png,jpg,gif,jpeg,swf,woff,svg,pdf > {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
     note: "gau does not have native rate limiting"
@@ -153,6 +185,34 @@ tools:
     command: "httpx -list {{INPUT}} -silent -mc 200,201,202,203,204,301,302,307,308,401,403,405 -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
     required_files: [urls.txt]
     outputs: [alive.txt]
+
+  # Host and HTTP Enrichment
+  get_ips:
+    enabled: true
+    type: inline
+    command: "python3 {{RECON_DIR}}/scripts/recon_enrichment.py get-ips --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --rate-limit {{RATE_LIMIT}}"
+    required_files: [urls.txt]
+    outputs: [ips.txt, hosts.jsonl, httpx_ip_raw.txt]
+
+  naabu:
+    enabled: true
+    type: binary
+    top_ports: 1000
+    command: "python3 {{RECON_DIR}}/scripts/recon_enrichment.py run-naabu --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --top-ports {{TOP_PORTS}} --rate-limit {{RATE_LIMIT}}"
+    required_files: [ips.txt]
+    outputs: [naabu.jsonl, ports.txt]
+
+  http_fingerprinting:
+    enabled: true
+    type: binary
+    json: true
+    tech_detect: true
+    cdn_detect: true
+    waf_tagging: true
+    filter_mode: tag_only
+    command: "python3 {{RECON_DIR}}/scripts/recon_enrichment.py run-httpx --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --rate-limit {{RATE_LIMIT}}"
+    required_files: [alive.txt]
+    outputs: [httpx.jsonl, waf_hosts.txt, unprotected_hosts.txt]
 
   # Visual Recon
   eyewitness:
@@ -171,7 +231,7 @@ tools:
 
   gau_params:
     type: inline # gau normal run will check install
-    command: "cat {{INPUT}} | gau --threads 5 > {{OUTPUT}}"
+    command: "cat {{INPUT}} | gau --threads 1 > {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [params_raw.txt]
     note: "gau does not have native rate limiting"
@@ -227,3 +287,11 @@ tools:
     command: "echo 'Manual dorking for: site:{{DOMAIN}} inurl:admin OR inurl:login OR inurl:api'"
     required_files: []
     outputs: [dorks.txt]
+
+  # Review Queue Ranking
+  url_ranking:
+    enabled: true
+    type: inline
+    command: "python3 {{RECON_DIR}}/scripts/recon_enrichment.py rank-urls --output {{OUTPUT}} --project-dir {{PROJECT_DIR}}"
+    required_files: [alive.txt]
+    outputs: [review_queue.jsonl]

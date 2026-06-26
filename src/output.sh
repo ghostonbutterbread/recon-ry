@@ -242,7 +242,7 @@ init_project_dir() {
 clean_empty_files() {
     local project_dir="$1"
 
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt params_raw.txt; do
+    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt params_raw.txt jsfiles.txt ips.txt hosts.jsonl httpx_ip_raw.txt naabu.jsonl ports.txt httpx.jsonl waf_hosts.txt unprotected_hosts.txt review_queue.jsonl; do
         if [[ -f "$project_dir/$file" && ! -s "$project_dir/$file" ]]; then
             rm -f "$project_dir/$file"
             log_debug "Removed empty file: $file"
@@ -287,7 +287,9 @@ export_json() {
 EOF
 
     local first=true
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt eyewitness/alive/report.html eyewitness/params/report.html eyewitness/custom_input/report.html; do
+    local files
+    files="wild.txt urls.txt $(get_history_output_files)"
+    for file in $files; do
         if [[ -f "$project_dir/$file" && -s "$project_dir/$file" ]]; then
             if [[ "$first" == "false" ]]; then
                 echo "," >> "$output_file"

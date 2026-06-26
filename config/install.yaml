@@ -55,6 +55,18 @@ tools:
     update_check: "github:projectdiscovery/httpx"
     binary_name: httpx
 
+  http_fingerprinting:
+    install_method: go
+    install_command: "go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest"
+    update_check: "github:projectdiscovery/httpx"
+    binary_name: httpx
+
+  naabu:
+    install_method: go
+    install_command: "go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest"
+    update_check: "github:projectdiscovery/naabu"
+    binary_name: naabu
+
   eyewitness:
     install_method: git
     install_command: "git clone https://github.com/RedSiege/EyeWitness.git $SCRIPT_DIR/tools/EyeWitness"

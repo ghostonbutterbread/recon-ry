@@ -128,14 +128,14 @@ execute_stage() {
         # Check if tool is enabled
         if ! is_tool_enabled "$tool"; then
             log_debug "Tool $tool is disabled, skipping"
-            ((skipped_tools++))
+            skipped_tools=$((skipped_tools + 1))
             continue
         fi
 
         # Check if required files exist
         if ! check_required_files "$tool" "$project_dir"; then
             log_debug "Tool $tool missing required files, skipping"
-            ((skipped_tools++))
+            skipped_tools=$((skipped_tools + 1))
             continue
         fi
 
@@ -388,7 +388,7 @@ run_recon_project() {
                 log_warning "Recon interrupted by user"
                 return 130
             fi
-            ((failed_stages++))
+            failed_stages=$((failed_stages + 1))
             log_error "Stage $stage failed"
         fi
 
@@ -481,7 +481,7 @@ show_results_summary() {
     echo ""
     log_info "Results Summary:"
 
-    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt; do
+    for file in wild.txt urls.txt alive.txt params.txt secrets.txt dirs.txt ips.txt hosts.jsonl httpx_ip_raw.txt naabu.jsonl ports.txt httpx.jsonl waf_hosts.txt unprotected_hosts.txt review_queue.jsonl; do
         if [[ -f "$project_dir/$file" ]]; then
             local count=$(wc -l < "$project_dir/$file" 2>/dev/null || echo 0)
             printf "  %-15s: %d entries\n" "$file" "$count"

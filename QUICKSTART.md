@@ -103,6 +103,22 @@ Expected key paths:
 ./main.sh scans --project ~/projects/target --kill
 ```
 
+## Profiles
+
+Built-in profiles:
+
+- `--full` - Complete reconnaissance (default)
+- `--subs` - Subdomain enumeration only
+- `--secrets` - Secret scanning
+- `--dork` - Google dorking
+- `--profile fast` - Quick scan (subs + alive check)
+- `--profile fingerprint` - Enrich existing `alive.txt` with IPs, Naabu ports, HTTP fingerprints, and ranked review queue
+
+Example:
+```bash
+./main.sh recon --profile fast --project ~/recon/target --url target.com
+```
+
 ## Verbosity and Timeouts
 
 ```bash
@@ -114,6 +130,14 @@ Expected key paths:
 
 # Override per-tool timeout for this run (0 = no timeout)
 ./main.sh recon --full --project ~/projects/target --timeout 600
+```
+
+## Review Queue Outputs
+
+```bash
+PROJECT=~/projects/target
+cat "$PROJECT/unprotected_hosts.txt"
+cat "$PROJECT/review_queue.jsonl"
 ```
 
 ## Troubleshooting

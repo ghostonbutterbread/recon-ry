@@ -106,6 +106,11 @@ execute_tool() {
 
     # Get rate limit for this tool
     local rate_limit=$(get_rate_limit "$tool")
+    local top_ports
+    top_ports=$(get_tool_info "$tool" "top_ports")
+    if [[ -z "$top_ports" ]]; then
+        top_ports="1000"
+    fi
 
     # Replace placeholders
     command="${command//\{\{INPUT\}\}/$input_file}"
@@ -114,6 +119,8 @@ execute_tool() {
     command="${command//\{\{URL\}\}/$url}"
     command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
     command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
+    command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
+    command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
     command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
     # Per-tool directories and virtualenvs
     local venv_enabled
@@ -153,6 +160,8 @@ execute_tool() {
         command="${command//\{\{URL\}\}/$url}"
         command="${command//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
         command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
+        command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
+        command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
         command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
         if [[ -n "$venv_path" ]]; then
             command="${command//\{\{VENV_PYTHON\}\}/$venv_path/bin/python}"
@@ -167,6 +176,9 @@ execute_tool() {
     fi
 
     log_verbose "Running: $tool"
+    if [[ -n "$rate_limit" && "$rate_limit" != "0" ]]; then
+        log_verbose "Rate limit for $tool: $rate_limit req/s"
+    fi
     log_debug "Command: $command"
 
     # Resolve effective timeout: flag > config default; 0 = disabled
@@ -488,7 +500,7 @@ run_tools_parallel() {
                 done
                 return 130
             fi
-            ((failed++))
+            failed=$((failed + 1))
         fi
     done
 
@@ -511,7 +523,7 @@ run_tools_sequential() {
                 INTERRUPTED=true
                 return 130
             fi
-            ((failed++))
+            failed=$((failed + 1))
         fi
     done
 

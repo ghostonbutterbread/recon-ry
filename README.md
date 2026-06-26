@@ -102,13 +102,14 @@ Notes:
 
 Defined in `config/profiles.yaml`:
 
-- `full`: `subdomain_enum`, `url_discovery`, `alive_check`, `param_discovery`, `dir_enum`, `secret_scan`, `eyewitness`
+- `full`: `subdomain_enum`, `url_discovery`, `alive_check`, `get_ips`, `port_enrichment`, `http_fingerprinting`, `param_discovery`, `dir_enum`, `secret_scan`, `url_ranking`, `eyewitness`
 - `subs`: `subdomain_enum`
 - `fast`: `subdomain_enum`, `alive_check`
 - `urls`: `url_discovery`, `alive_check`
 - `secrets`: `secret_scan`
 - `dork`: `dork`
 - `eye`: `eyewitness`
+- `fingerprint`: `get_ips`, `port_enrichment`, `http_fingerprinting`, `url_ranking`
 
 EyeWitness stage is forced to run last when present.
 
@@ -122,6 +123,15 @@ EyeWitness stage is forced to run last when present.
 ├── params_raw.txt
 ├── params.txt
 ├── jsfiles.txt
+├── ips.txt
+├── hosts.jsonl
+├── httpx_ip_raw.txt
+├── naabu.jsonl
+├── ports.txt
+├── httpx.jsonl
+├── waf_hosts.txt
+├── unprotected_hosts.txt
+├── review_queue.jsonl
 ├── secrets.txt
 ├── rate_limit.conf
 ├── dirs_status/
@@ -199,6 +209,57 @@ Manage it with:
 
 Missing config files are restored from `config/defaults/` when possible.
 
+## Recon Pipeline
+
+1. **Subdomain Enumeration** → `wild.txt`
+   - subfinder, crt.sh, assetfinder, amass
+
+2. **URL Discovery** → `urls.txt`
+   - katana, hakrawler, waybackurls, gau
+
+3. **Alive Check** → `alive.txt`
+   - httpx (filters live hosts)
+
+4. **IP Enrichment** → `ips.txt`, `hosts.jsonl`
+   - extract and dedupe hosts from `urls.txt` plus `alive.txt`, then use httpx `-ip` with DNS fallback
+
+5. **Port Enrichment** → `naabu.jsonl`, `ports.txt`
+   - naabu fast port signal, controlled by config and run once per profile
+
+6. **HTTP Fingerprinting** → `httpx.jsonl`, `waf_hosts.txt`, `unprotected_hosts.txt`
+   - host-deduped httpx JSON facts for tech, CDN/WAF hints, status, title, and web server
+
+7. **Parameter Discovery** → `params.txt`
+   - gau (with parameters) → uro (deduplication)
+
+8. **Directory Enumeration** → `dirs.txt`
+   - ffuf, dirsearch
+
+9. **Secret Scanning** → `secrets.txt`
+   - nuclei, trufflehog
+
+10. **URL Ranking** → `review_queue.jsonl`
+    - ranked review queue for focused human and agent follow-up
+
+### Output Files
+
+- `wild.txt` - Discovered subdomains
+- `urls.txt` - All URLs (subdomains + discovered URLs)
+- `alive.txt` - Live hosts (filtered by httpx)
+- `ips.txt` - Unique IPs extracted from the URL corpus
+- `hosts.jsonl` - Host/IP metadata sidecar
+- `httpx_ip_raw.txt` - Raw httpx `-ip` output used for IP extraction when available
+- `naabu.jsonl` - Naabu JSON port results
+- `ports.txt` - Compact open-port sidecar
+- `httpx.jsonl` - HTTP fingerprinting JSON
+- `waf_hosts.txt` - Hosts with CDN/WAF/protection hints
+- `unprotected_hosts.txt` - Hosts without obvious CDN/WAF hints
+- `params.txt` - URLs with parameters
+- `dirs.txt` - Discovered directories
+- `secrets.txt` - Found secrets and sensitive data
+- `review_queue.jsonl` - Ranked targets and reasons for focused review
+- `history/TIMESTAMP/` - Historical snapshots of each run
+
 ## Examples
 
 ```bash
@@ -222,6 +283,9 @@ Missing config files are restored from `config/defaults/` when possible.
 
 # Dry run
 ./main.sh recon --full --project ~/bounties/example --url example.com --dry-run
+
+# Fingerprint and rank existing live hosts
+./main.sh recon --profile fingerprint --project ~/bounties/example
 
 # Offline health check
 ./main.sh selftest
