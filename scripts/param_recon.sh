@@ -7,8 +7,9 @@
 #
 # Active (live crawl):
 #   katana        — ProjectDiscovery crawler with JS parsing (-jc)
-#   hakrawler     — Fast link/form crawler
-#   gospider      — Broad active spider, good at finding JS references
+#   xnLinkFinder  — Deep link/param extraction from JS, HTML, and responses
+#   hakrawler     — Fast link/form crawler (disabled by default)
+#   gospider      — Broad active spider (disabled by default)
 #   scrapling     — Stealth crawler (bypasses Cloudflare/bot protection)
 #
 # Post-processing:
@@ -43,8 +44,9 @@ USE_STEALTH=0
 USE_WAYBACKURLS=1
 USE_WAYMORE=1
 USE_KATANA=1
-USE_HAKRAWLER=1
-USE_GOSPIDER=1
+USE_XNLINKFINDER=1
+USE_HAKRAWLER=0
+USE_GOSPIDER=0
 KATANA_DEPTH=5
 EXT_FILTER="png,jpg,jpeg,gif,svg,ico,woff,woff2,eot,ttf,otf,webp,mp4,mp3,pdf,zip,gz,tar,map,css"
 
@@ -59,12 +61,15 @@ Usage: $0 [options]
   -d  <depth>   Katana crawl depth (default: 5)
 
   --passive-only       Only run waybackurls + waymore
-  --active-only        Only run katana + hakrawler + gospider
+  --active-only        Only run katana + xnLinkFinder
   --stealth            Also run scrapling (slower, bypasses bot protection)
 
   --no-waybackurls     Skip waybackurls
   --no-waymore         Skip waymore
   --no-katana          Skip katana
+  --no-xnlinkfinder    Skip xnLinkFinder
+  --hakrawler          Enable hakrawler (disabled by default)
+  --gospider           Enable gospider (disabled by default)
   --no-hakrawler       Skip hakrawler
   --no-gospider        Skip gospider
 
@@ -89,14 +94,17 @@ while [[ $# -gt 0 ]]; do
         --no-waybackurls) USE_WAYBACKURLS=0; shift ;;
         --no-waymore) USE_WAYMORE=0; shift ;;
         --no-katana) USE_KATANA=0; shift ;;
+        --no-xnlinkfinder) USE_XNLINKFINDER=0; shift ;;
+        --hakrawler) USE_HAKRAWLER=1; shift ;;
         --no-hakrawler) USE_HAKRAWLER=0; shift ;;
+        --gospider) USE_GOSPIDER=1; shift ;;
         --no-gospider) USE_GOSPIDER=0; shift ;;
         -h|--help) usage ;;
         *) echo "Unknown option: $1"; usage ;;
     esac
 done
 
-[[ $PASSIVE_ONLY -eq 1 ]] && { USE_KATANA=0; USE_HAKRAWLER=0; USE_GOSPIDER=0; USE_STEALTH=0; }
+[[ $PASSIVE_ONLY -eq 1 ]] && { USE_KATANA=0; USE_XNLINKFINDER=0; USE_HAKRAWLER=0; USE_GOSPIDER=0; USE_STEALTH=0; }
 [[ $ACTIVE_ONLY -eq 1 ]]  && { USE_WAYBACKURLS=0; USE_WAYMORE=0; }
 
 [[ ! -f "$INPUT" ]] && { echo -e "${RED}Error:${NC} '$INPUT' not found"; exit 1; }
@@ -186,10 +194,10 @@ if os.path.exists(urls_f):
         h = host_of(val)
         if not h or '*' in h:
             continue
-        if is_url or root2(h) in wild_roots:
-            results.add(root2(h))
+        if root2(h) in wild_roots:
+            results.add(root2(h))  # wildcard domain — collapse to root
         else:
-            results.add(h)  # exact scope domain — keep verbatim
+            results.add(h)  # exact scope entry — keep verbatim (handles unusual TLDs like flo.uri.sh)
 
 # Fallback: no seed files, read from stdin (INPUT)
 if not os.path.exists(wild_f) and not os.path.exists(urls_f):
@@ -206,6 +214,7 @@ PYEOF
 WB_TMP=$(mktemp /tmp/pr_wb.XXXXXX)
 WAYMORE_TMP=$(mktemp /tmp/pr_waymore.XXXXXX)
 KATANA_TMP=$(mktemp /tmp/pr_katana.XXXXXX)
+XNLF_TMP=$(mktemp /tmp/pr_xnlf.XXXXXX)
 HAK_TMP=$(mktemp /tmp/pr_hak.XXXXXX)
 GOSPIDER_TMP=$(mktemp /tmp/pr_gospider.XXXXXX)
 SCRAPLING_TMP=$(mktemp /tmp/pr_scrapling.XXXXXX)
@@ -214,7 +223,7 @@ START_TIME=$(date +%s)
 
 cleanup() {
     rm -f "$DOMAINS_TMP" "$WAYMORE_DOMAINS_TMP" "$WB_TMP" "$WAYMORE_TMP" \
-          "$KATANA_TMP" "$HAK_TMP" "$GOSPIDER_TMP" "$SCRAPLING_TMP" "$SCRAPLING_SCRIPT"
+          "$KATANA_TMP" "$XNLF_TMP" "$HAK_TMP" "$GOSPIDER_TMP" "$SCRAPLING_TMP" "$SCRAPLING_SCRIPT"
 }
 trap cleanup EXIT INT TERM
 
@@ -233,9 +242,10 @@ echo -e "    waybackurls  $([ $USE_WAYBACKURLS -eq 1 ] && echo -e "${GREEN}✓${
 echo -e "    waymore      $([ $USE_WAYMORE -eq 1 ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}skip${NC}")"
 echo -e "  ${CYAN}Active:${NC}"
 echo -e "    katana       $([ $USE_KATANA -eq 1 ] && echo -e "${GREEN}✓${NC} (depth=$KATANA_DEPTH, -jc)" || echo -e "${DIM}skip${NC}")"
-echo -e "    hakrawler    $([ $USE_HAKRAWLER -eq 1 ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}skip${NC}")"
-echo -e "    gospider     $([ $USE_GOSPIDER -eq 1 ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}skip${NC}")"
-echo -e "    scrapling    $([ $USE_STEALTH -eq 1 ] && echo -e "${GREEN}✓${NC} (stealth mode)" || echo -e "${DIM}skip (use --stealth)${NC}")"
+echo -e "    xnLinkFinder $([ $USE_XNLINKFINDER -eq 1 ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}skip${NC}")"
+echo -e "    hakrawler    $([ $USE_HAKRAWLER -eq 1 ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}skip (--hakrawler to enable)${NC}")"
+echo -e "    gospider     $([ $USE_GOSPIDER -eq 1 ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}skip (--gospider to enable)${NC}")"
+echo -e "    scrapling    $([ $USE_STEALTH -eq 1 ] && echo -e "${GREEN}✓${NC} (stealth mode)" || echo -e "${DIM}skip (--stealth to enable)${NC}")"
 echo ""
 
 # ─── Helper: print phase header ───────────────────────────────────────────────
@@ -339,6 +349,21 @@ else
     skip
 fi
 
+# ─── ACTIVE: xnLinkFinder ────────────────────────────────────────────────────
+phase "xnLinkFinder (deep JS/HTML link + param extraction)"
+if [[ $USE_XNLINKFINDER -eq 1 ]] && command -v xnLinkFinder &>/dev/null; then
+    xnLinkFinder \
+        -i "$INPUT" \
+        -o "$XNLF_TMP" \
+        -t 5 \
+        2>/dev/null || true
+    result "$(wc -l < "$XNLF_TMP" | tr -d ' ')" "xnLinkFinder"
+elif [[ $USE_XNLINKFINDER -eq 1 ]]; then
+    echo -e "          ${YELLOW}warning:${NC} xnLinkFinder not found — install: pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git"; echo ""
+else
+    skip
+fi
+
 # ─── ACTIVE: hakrawler ────────────────────────────────────────────────────────
 phase "hakrawler (link + form crawler)"
 if [[ $USE_HAKRAWLER -eq 1 ]] && command -v hakrawler &>/dev/null; then
@@ -434,7 +459,7 @@ fi
 
 # ─── Merge all → params_raw.txt ───────────────────────────────────────────────
 phase "Merging all sources → params_raw.txt"
-cat "$WB_TMP" "$WAYMORE_TMP" "$KATANA_TMP" "$HAK_TMP" "$GOSPIDER_TMP" "$SCRAPLING_TMP" \
+cat "$WB_TMP" "$WAYMORE_TMP" "$KATANA_TMP" "$XNLF_TMP" "$HAK_TMP" "$GOSPIDER_TMP" "$SCRAPLING_TMP" \
     2>/dev/null | sort -u > "$RAW_OUT"
 RAW_COUNT=$(wc -l < "$RAW_OUT" | tr -d ' ')
 echo -e "          ${GREEN}✓${NC} ${BOLD}${RAW_COUNT}${NC} unique URLs combined"
@@ -464,12 +489,13 @@ echo -e " ${BOLD}Summary${NC}"
 echo -e "${BOLD}═══════════════════════════════════════════════${NC}"
 printf "  %-28s %s\n" "Elapsed:" "$(( ELAPSED/60 ))m $(( ELAPSED%60 ))s"
 echo ""
-printf "  ${CYAN}%-28s${NC} %s\n" "waybackurls:"     "$(wc -l < "$WB_TMP"       | tr -d ' ')"
-printf "  ${CYAN}%-28s${NC} %s\n" "waymore:"          "$(wc -l < "$WAYMORE_TMP"  | tr -d ' ')"
-printf "  ${CYAN}%-28s${NC} %s\n" "katana:"           "$(wc -l < "$KATANA_TMP"   | tr -d ' ')"
-printf "  ${CYAN}%-28s${NC} %s\n" "hakrawler:"        "$(wc -l < "$HAK_TMP"      | tr -d ' ')"
-printf "  ${CYAN}%-28s${NC} %s\n" "gospider:"         "$(wc -l < "$GOSPIDER_TMP" | tr -d ' ')"
-printf "  ${CYAN}%-28s${NC} %s\n" "scrapling:"        "$(wc -l < "$SCRAPLING_TMP"| tr -d ' ')"
+printf "  ${CYAN}%-28s${NC} %s\n" "waybackurls:"     "$(wc -l < "$WB_TMP"        | tr -d ' ')"
+printf "  ${CYAN}%-28s${NC} %s\n" "waymore:"          "$(wc -l < "$WAYMORE_TMP"   | tr -d ' ')"
+printf "  ${CYAN}%-28s${NC} %s\n" "katana:"           "$(wc -l < "$KATANA_TMP"    | tr -d ' ')"
+printf "  ${CYAN}%-28s${NC} %s\n" "xnLinkFinder:"    "$(wc -l < "$XNLF_TMP"      | tr -d ' ')"
+printf "  ${CYAN}%-28s${NC} %s\n" "hakrawler:"        "$(wc -l < "$HAK_TMP"       | tr -d ' ')"
+printf "  ${CYAN}%-28s${NC} %s\n" "gospider:"         "$(wc -l < "$GOSPIDER_TMP"  | tr -d ' ')"
+printf "  ${CYAN}%-28s${NC} %s\n" "scrapling:"        "$(wc -l < "$SCRAPLING_TMP" | tr -d ' ')"
 echo ""
 printf "  ${BOLD}%-28s${NC} %s\n" "params_raw.txt:"   "$RAW_COUNT"
 printf "  ${GREEN}${BOLD}%-28s${NC} %s\n" "params.txt (uro):" "${DEDUP_COUNT}"

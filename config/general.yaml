@@ -223,6 +223,27 @@ tools:
     note: "Requires Chromium/ChromeDriver; run EyeWitness setup if missing"
 
   # Parameter Discovery
+  waymore:
+    type: binary
+    command: "waymore -i {{DOMAIN}} -mode U -oU {{OUTPUT}}"
+    required_files: []
+    outputs: [params_raw.txt]
+    note: "Invoked per root domain inside param_recon.sh; listed here for tool-check visibility"
+
+  xnlinkfinder:
+    type: binary
+    command: "xnLinkFinder -i {{INPUT}} -o {{OUTPUT}} -t 5"
+    required_files: [alive.txt]
+    outputs: [params_raw.txt]
+    note: "Invoked inside param_recon.sh; listed here for tool-check visibility"
+
+  gospider:
+    type: binary
+    command: "gospider -s {{URL}} --depth {{DEPTH}} -q"
+    required_files: [alive.txt]
+    outputs: [params_raw.txt]
+    note: "Disabled by default in param_recon.sh; enable with --gospider flag"
+
   param_recon:
     type: script
     command: "rm -rf {{PROJECT_DIR}}/.param_recon_tmp && bash {{RECON_DIR}}/scripts/param_recon.sh -i {{INPUT}} -o {{PROJECT_DIR}}/.param_recon_tmp && cat {{PROJECT_DIR}}/.param_recon_tmp/params_raw.txt > {{OUTPUT}}"

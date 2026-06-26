@@ -16,7 +16,7 @@ tools:
     install_method: script
     install_command: "# Bundled script - no installation needed"
     binary_path: "scripts/param_recon.sh"
-    dependencies: [waybackurls, waymore, katana, hakrawler, gospider, uro]
+    dependencies: [waybackurls, katana, hakrawler, uro]
 
   dork_scan:
     install_method: inline
@@ -115,6 +115,13 @@ tools:
     update_check: "github:xnl-h4ck3r/waymore"
     binary_name: waymore
     check_command: "command -v waymore"
+
+  xnlinkfinder:
+    install_method: pipx
+    install_command: "pipx install git+https://github.com/xnl-h4ck3r/xnLinkFinder.git"
+    update_check: "github:xnl-h4ck3r/xnLinkFinder"
+    binary_name: xnLinkFinder
+    check_command: "command -v xnLinkFinder"
 
   gau:
     install_method: go

@@ -7,6 +7,9 @@ tools:
   hakrawler: false
   waybackurls: true
   gau: true
+  waymore: true
+  xnlinkfinder: true
+  gospider: false
   httpx: true
   eyewitness: true
   gau_params: true

@@ -20,6 +20,8 @@ tools:
 
   # -- param_discovery ----------------------------------------------------------
   param_recon: true
+  waymore: true
+  xnlinkfinder: true
   uro: true
   js_files: true
   unclutter_jsfiles: true
@@ -39,6 +41,7 @@ tools:
   dork_scan: false
 
   # -- legacy / unused ----------------------------------------------------------
+  gospider: false
   gau_params: false
 
 stages:
