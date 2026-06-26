@@ -45,7 +45,7 @@ USE_WAYMORE=1
 USE_KATANA=1
 USE_HAKRAWLER=1
 USE_GOSPIDER=1
-KATANA_DEPTH=3
+KATANA_DEPTH=5
 EXT_FILTER="png,jpg,jpeg,gif,svg,ico,woff,woff2,eot,ttf,otf,webp,mp4,mp3,pdf,zip,gz,tar,map,css"
 
 usage() {
@@ -56,7 +56,7 @@ Usage: $0 [options]
   -i  <file>    Input file of live URLs (default: alive.txt)
   -o  <dir>     Output directory (default: current dir)
   -r  <num>     Rate limit in req/s — overrides rate_limit.conf (default: 5)
-  -d  <depth>   Katana crawl depth (default: 3)
+  -d  <depth>   Katana crawl depth (default: 5)
 
   --passive-only       Only run waybackurls + waymore
   --active-only        Only run katana + hakrawler + gospider
@@ -134,15 +134,73 @@ python3 -c "
 import sys, re
 seen = set()
 for line in sys.stdin:
-    m = re.search(r'https?://([^/\s]+)', line)
+    m = re.search(r'https?://([^/\s:]+)', line)
     if m:
-        d = m.group(1).strip(\"'\")
+        d = m.group(1).strip(\"'\").lower()
         if d not in seen:
             seen.add(d)
             print(d)
 " < "$INPUT" | sort -u > "$DOMAINS_TMP"
 DOMAIN_COUNT=$(wc -l < "$DOMAINS_TMP" | tr -d ' ')
 URL_COUNT=$(wc -l < "$INPUT" | tr -d ' ')
+
+# waymore enumerates all subdomains itself — pass root domains only.
+# Strategy: derive wild.txt roots first (scope wildcard bases + discovered
+# subdomains all collapsed to eTLD+1). Then add urls.txt entries: bare
+# hostnames whose eTLD+1 is already in wild roots are discovered subdomains
+# and get collapsed; bare hostnames NOT in wild roots are exact scope entries
+# (e.g. flo.uri.sh) and are kept verbatim. Full URL entries always collapse.
+WAYMORE_DOMAINS_TMP=$(mktemp /tmp/pr_waymore_domains.XXXXXX)
+_proj="$(dirname "$INPUT")"
+python3 - "$_proj" <<'PYEOF'
+import sys, re, os
+
+def host_of(line):
+    h = re.sub(r'^https?://', '', line.strip().lower())
+    return h.split('/')[0].split('?')[0].split('#')[0]
+
+def root2(h):
+    p = h.split('.')
+    return '.'.join(p[-2:]) if len(p) >= 2 else h
+
+proj = sys.argv[1]
+wild_f = os.path.join(proj, 'wild.txt')
+urls_f = os.path.join(proj, 'urls.txt')
+
+results = set()
+
+# Pass 1: wild.txt — always collapse to eTLD+1 (scope roots + discovered subs)
+if os.path.exists(wild_f):
+    for line in open(wild_f):
+        h = host_of(line)
+        if h and '*' not in h:
+            results.add(root2(h))
+
+wild_roots = set(results)  # snapshot before urls pass
+
+# Pass 2: urls.txt — collapse only if eTLD+1 is already a wild root or is a full URL
+if os.path.exists(urls_f):
+    for line in open(urls_f):
+        val = line.strip().lower()
+        is_url = val.startswith(('http://', 'https://'))
+        h = host_of(val)
+        if not h or '*' in h:
+            continue
+        if is_url or root2(h) in wild_roots:
+            results.add(root2(h))
+        else:
+            results.add(h)  # exact scope domain — keep verbatim
+
+# Fallback: no seed files, read from stdin (INPUT)
+if not os.path.exists(wild_f) and not os.path.exists(urls_f):
+    for line in sys.stdin:
+        h = host_of(line)
+        if h and '*' not in h:
+            results.add(root2(h))
+
+for r in sorted(results):
+    print(r)
+PYEOF
 
 # ─── Temp files ───────────────────────────────────────────────────────────────
 WB_TMP=$(mktemp /tmp/pr_wb.XXXXXX)
@@ -155,8 +213,8 @@ SCRAPLING_SCRIPT=$(mktemp /tmp/pr_scrapling.XXXXXX.py)
 START_TIME=$(date +%s)
 
 cleanup() {
-    rm -f "$DOMAINS_TMP" "$WB_TMP" "$WAYMORE_TMP" "$KATANA_TMP" \
-          "$HAK_TMP" "$GOSPIDER_TMP" "$SCRAPLING_TMP" "$SCRAPLING_SCRIPT"
+    rm -f "$DOMAINS_TMP" "$WAYMORE_DOMAINS_TMP" "$WB_TMP" "$WAYMORE_TMP" \
+          "$KATANA_TMP" "$HAK_TMP" "$GOSPIDER_TMP" "$SCRAPLING_TMP" "$SCRAPLING_SCRIPT"
 }
 trap cleanup EXIT INT TERM
 
@@ -212,12 +270,54 @@ if [[ $USE_WAYMORE -eq 1 ]] && command -v waymore &>/dev/null; then
     WAYMORE_OUT_DIR=$(mktemp -d /tmp/pr_waymore_out.XXXXXX)
     while IFS= read -r domain; do
         waymore -i "$domain" -mode U -oU "$WAYMORE_OUT_DIR/${domain}.txt" 2>/dev/null || true
-    done < "$DOMAINS_TMP"
-    cat "$WAYMORE_OUT_DIR"/*.txt 2>/dev/null | sort -u > "$WAYMORE_TMP"
+    done < "$WAYMORE_DOMAINS_TMP"
+    # Scope filter: waymore returns subdomain URLs for every domain it queries.
+    # For wildcard scope entries (roots in wild.txt) any subdomain is fine.
+    # For exact scope entries (in WAYMORE_DOMAINS_TMP but NOT covered by wild.txt)
+    # strip any URL whose hostname has extra subdomain labels beyond the queried host.
+    cat "$WAYMORE_OUT_DIR"/*.txt 2>/dev/null | sort -u \
+    | python3 - "$_proj/wild.txt" "$WAYMORE_DOMAINS_TMP" <<'SCOPE_FILTER'
+import sys, re, os
+
+def root2(h):
+    p = h.split('.')
+    return '.'.join(p[-2:]) if len(p) >= 2 else h
+
+wild_f, domains_f = sys.argv[1], sys.argv[2]
+
+# Wildcard roots: any subdomain of these is in scope
+wild_roots = set()
+if os.path.exists(wild_f):
+    for line in open(wild_f):
+        h = line.strip().lower()
+        if h and '*' not in h:
+            wild_roots.add(root2(h))
+
+# Exact scope domains: hosts we queried that are NOT covered by a wildcard root
+exact_domains = set()
+if os.path.exists(domains_f):
+    for line in open(domains_f):
+        h = line.strip().lower()
+        if h and root2(h) not in wild_roots:
+            exact_domains.add(h)
+
+for line in sys.stdin:
+    url = line.strip()
+    if not url:
+        continue
+    m = re.match(r'^https?://([^/\s:?#]+)', url)
+    if not m:
+        print(url)
+        continue
+    host = m.group(1).lower()
+    if root2(host) in wild_roots or host in exact_domains:
+        print(url)
+SCOPE_FILTER
+    > "$WAYMORE_TMP"
     rm -rf "$WAYMORE_OUT_DIR"
-    result "$(wc -l < "$WAYMORE_TMP" | tr -d ' ')" "waymore"
+    result "$(wc -l < "$WAYMORE_TMP" | tr -d ' ')" "waymore (scope-filtered)"
 elif [[ $USE_WAYMORE -eq 1 ]]; then
-    echo -e "          ${YELLOW}warning:${NC} waymore not found — install: pip3 install waymore"; echo ""
+    echo -e "          ${YELLOW}warning:${NC} waymore not found — install: pipx install git+https://github.com/xnl-h4ck3r/waymore.git"; echo ""
 else
     skip
 fi

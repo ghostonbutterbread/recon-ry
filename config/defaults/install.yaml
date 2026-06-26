@@ -110,9 +110,9 @@ tools:
     binary_name: waybackurls
 
   waymore:
-    install_method: pip
-    install_command: "pip3 install waymore"
-    update_check: "pypi:waymore"
+    install_method: pipx
+    install_command: "pipx install git+https://github.com/xnl-h4ck3r/waymore.git"
+    update_check: "github:xnl-h4ck3r/waymore"
     binary_name: waymore
     check_command: "command -v waymore"
 

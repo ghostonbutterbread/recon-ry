@@ -83,6 +83,14 @@ install_tool() {
             log_verbose "Running: $install_command"
             eval "$install_command"
             ;;
+        pipx)
+            if ! command -v pipx &> /dev/null; then
+                log_error "pipx is not installed. Install it with: pip3 install pipx"
+                return 1
+            fi
+            log_verbose "Running: $install_command"
+            eval "$install_command"
+            ;;
         git)
             if ! command -v git &> /dev/null; then
                 log_error "Git is not installed. Please install Git first."
@@ -189,6 +197,9 @@ update_tool() {
         pip)
             local binary_name=$(get_install_info "$tool" "binary_name")
             pip3 install --upgrade "$binary_name"
+            ;;
+        pipx)
+            install_tool "$tool"
             ;;
         git)
             local binary_path=$(get_install_info "$tool" "binary_path")
