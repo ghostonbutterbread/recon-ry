@@ -8,28 +8,28 @@
 # Check if a tool binary exists
 check_tool_exists() {
     local tool="$1"
+    local dependency="${2:-false}"
 
     # Get tool type from general config
     local tool_type=$(get_tool_info "$tool" "type")
+    if [[ -z "$tool_type" && "$dependency" == "true" ]]; then
+        local install_method
+        install_method=$(get_install_info "$tool" "install_method")
+        if [[ "$install_method" == "inline" || "$install_method" == "script" ]]; then
+            tool_type="$install_method"
+        else
+            tool_type="binary"
+        fi
+    fi
+
+    local base_available=false
 
     # Handle different tool types
     case "$tool_type" in
         inline)
-            # Inline commands (like crt_sh) don't need binary checks
-            # They use built-in commands like curl, jq, etc.
-            # Just verify the command dependencies exist
-            local command=$(get_tool_info "$tool" "command")
-
-            # Check for common dependencies in the command
-            if echo "$command" | grep -q "curl"; then
-                command -v curl &> /dev/null || return 1
-            fi
-            if echo "$command" | grep -q "jq"; then
-                command -v jq &> /dev/null || return 1
-            fi
-
-            # Inline commands are always "available" if dependencies exist
-            return 0
+            # Inline commands do not have their own binary. Their declared
+            # dependencies are checked below.
+            base_available=true
             ;;
 
         script)
@@ -41,11 +41,11 @@ check_tool_exists() {
                 if [[ "$binary_path" != /* ]]; then
                     binary_path="$SCRIPT_DIR/$binary_path"
                 fi
-                [[ -f "$binary_path" ]]
+                [[ -f "$binary_path" ]] && base_available=true
             else
                 # Fallback to binary name check
                 local binary_name=$(get_install_info "$tool" "binary_name")
-                command -v "$binary_name" &> /dev/null
+                command -v "$binary_name" &> /dev/null && base_available=true
             fi
             ;;
 
@@ -53,16 +53,32 @@ check_tool_exists() {
             # Default: check for binary in PATH
             local binary_name=$(get_install_info "$tool" "binary_name")
             local binary_path=$(get_install_info "$tool" "binary_path")
+            local check_command=$(get_install_info "$tool" "check_command")
 
-            if [[ -n "$binary_path" ]]; then
+            if [[ -n "$check_command" ]]; then
+                eval "$check_command" &> /dev/null && base_available=true
+            elif [[ -n "$binary_path" ]]; then
                 # Expand tilde
                 binary_path="${binary_path/#\~/$HOME}"
-                [[ -f "$binary_path" ]]
+                [[ -f "$binary_path" ]] && base_available=true
             else
-                command -v "$binary_name" &> /dev/null
+                command -v "$binary_name" &> /dev/null && base_available=true
             fi
             ;;
     esac
+
+    [[ "$base_available" == "true" ]] || return 1
+
+    local dep
+    for dep in $(get_install_dependencies "$tool"); do
+        if has_install_tool "$dep"; then
+            check_tool_exists "$dep" true || return 1
+        else
+            command -v "$dep" &> /dev/null || return 1
+        fi
+    done
+
+    return 0
 }
 
 # Execute a tool
