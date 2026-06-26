@@ -6,6 +6,7 @@
 *.temp
 *.swp
 *~
+*.bak.*
 
 # Python
 __pycache__/
