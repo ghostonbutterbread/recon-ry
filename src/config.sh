@@ -459,6 +459,19 @@ print(tool_cfg.get('active', '') or '')
 "
 }
 
+# Check whether a tool is allowed to receive authenticated HTTP headers.
+tool_supports_auth() {
+    local tool="$1"
+    local supported
+    supported=$(echo "$GENERAL_CONFIG_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+value = data.get('tools', {}).get('$tool', {}).get('auth_supported', False)
+print('true' if value else 'false')
+")
+    [[ "$supported" == "true" ]]
+}
+
 
 # Update tool enabled status (writes to state.yaml)
 update_tool_status() {

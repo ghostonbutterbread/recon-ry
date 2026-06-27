@@ -18,6 +18,8 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
+from auth_args import collect_headers
+
 
 def read_lines(path: Path) -> list[str]:
     if not path.is_file():
@@ -228,6 +230,15 @@ def normalized_rate_limit(value: str | None) -> int:
         return 0
 
 
+def auth_headers(args: argparse.Namespace) -> list[str]:
+    return collect_headers(
+        seed_file=getattr(args, "auth_seed", ""),
+        auth_host=getattr(args, "auth_host", ""),
+        cli_headers=getattr(args, "auth_header", None) or [],
+        cli_cookies=getattr(args, "cookie", None) or [],
+    )
+
+
 def cmd_run_naabu(args: argparse.Namespace) -> int:
     input_rows = read_lines(args.input)
     host_map = load_ip_to_hosts(args.project_dir)
@@ -323,6 +334,8 @@ def cmd_run_httpx(args: argparse.Namespace) -> int:
     rate_limit = normalized_rate_limit(args.rate_limit)
     if rate_limit:
         command.extend(["-rate-limit", str(rate_limit)])
+    for header in auth_headers(args):
+        command.extend(["-H", header])
     try:
         code = run_command(command)
         if code != 0:
@@ -446,6 +459,10 @@ def build_parser() -> argparse.ArgumentParser:
     httpx.add_argument("--output", type=Path, required=True)
     httpx.add_argument("--project-dir", type=Path, required=True)
     httpx.add_argument("--rate-limit", default="")
+    httpx.add_argument("--auth-seed", default="")
+    httpx.add_argument("--auth-host", default="")
+    httpx.add_argument("--auth-header", action="append", default=[])
+    httpx.add_argument("--cookie", action="append", default=[])
     httpx.set_defaults(func=cmd_run_httpx)
 
     rank = subparsers.add_parser("rank-urls", help="Rank URLs for focused review")

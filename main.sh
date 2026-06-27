@@ -28,6 +28,10 @@ COMMAND=""
 TOOL_TIMEOUT=""  # empty = use config default; 0 = no timeout
 EYE_INPUT=""
 INTERRUPTED=false
+AUTH_SEED_FILE="${RECON_RY_AUTH_SEED:-}"
+AUTH_HOST="${RECON_RY_AUTH_HOST:-}"
+declare -a AUTH_HEADERS=()
+declare -a AUTH_COOKIES=()
 
 handle_interrupt() {
     INTERRUPTED=true
@@ -119,6 +123,9 @@ Options:
     --project <dir>     Project directory path (required for saving results)
     --url <url>         Target URL/domain to scan
     --timeout <secs>    Kill each tool after this many seconds (0 = no timeout, omit = config default)
+    --auth-seed <file>  Owner-only JSON auth seed for supported active HTTP tools
+    --auth-header <h>   Header for supported active HTTP tools; repeatable
+    --cookie <value>    Cookie header value for supported active HTTP tools; repeatable
     -v                  Verbose output (show tool names)
     -vv                 Very verbose (show full tool output)
     --dry-run           Show what would be executed without running
@@ -166,12 +173,16 @@ Examples:
     # Dry run to see what would be executed
     $(basename "$0") recon --url example.com --project ~/bounties/example --full --dry-run
 
+    # Authenticated active HTTP tooling only
+    $(basename "$0") recon --url example.com --project ~/bounties/example --urls --auth-seed ~/auth.json
+
 Notes:
     - Either --project or --url must be specified
     - Subdomain enumeration requires --url or existing wild.txt
     - Use --project to save results, omit for stdout-only output
     - wild.txt and urls.txt are treated as inputs and are not modified
     - Results are saved to history directory with timestamp
+    - Auth is opt-in and only passed to tools that support HTTP headers
 EOF
 }
 
@@ -219,6 +230,9 @@ Options:
     -v                  Verbose output (show tool names)
     -vv                 Very verbose (show full tool output)
     --dry-run           Show what would be executed without running
+    --auth-seed <file>  Owner-only JSON auth seed for supported active HTTP tools
+    --auth-header <h>   Header for supported active HTTP tools; repeatable
+    --cookie <value>    Cookie header value for supported active HTTP tools; repeatable
     --update            Update tools before running
     -h, --help          Show this help message
 
@@ -488,6 +502,18 @@ parse_args() {
                 ;;
             --timeout)
                 TOOL_TIMEOUT="$2"
+                shift 2
+                ;;
+            --auth-seed)
+                AUTH_SEED_FILE="$2"
+                shift 2
+                ;;
+            --auth-header)
+                AUTH_HEADERS+=("$2")
+                shift 2
+                ;;
+            --cookie)
+                AUTH_COOKIES+=("$2")
                 shift 2
                 ;;
             -v)
