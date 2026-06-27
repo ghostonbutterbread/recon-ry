@@ -279,15 +279,17 @@ phase "waymore (Wayback + CommonCrawl + URLScan + OTX)"
 if [[ $USE_WAYMORE -eq 1 ]] && command -v waymore &>/dev/null; then
     WAYMORE_OUT_DIR=$(mktemp -d /tmp/pr_waymore_out.XXXXXX)
     while IFS= read -r domain; do
-        waymore -i "$domain" -mode U -oU "$WAYMORE_OUT_DIR/${domain}.txt" -xS virustotal 2>&1 | grep -v "^\s*$" >&2 || true
+        waymore -i "$domain" -mode U -oU "$WAYMORE_OUT_DIR/${domain}.txt" -xvt 2>&1 | grep -v "^\s*$" >&2 || true
     done < "$WAYMORE_DOMAINS_TMP"
-    # Scope filter: waymore returns subdomain URLs for every domain it queries.
-    # For wildcard scope entries (roots in wild.txt) any subdomain is fine.
-    # For exact scope entries (in WAYMORE_DOMAINS_TMP but NOT covered by wild.txt)
-    # strip any URL whose hostname has extra subdomain labels beyond the queried host.
-    cat "$WAYMORE_OUT_DIR"/*.txt 2>/dev/null | sort -u \
-    | python3 - "$_proj/wild.txt" "$WAYMORE_DOMAINS_TMP" <<'SCOPE_FILTER'
+    # Scope filter: write to a temp script file so piped stdin works correctly.
+    # (python3 - <<'HEREDOC' conflicts with piped stdin — heredoc wins, pipe is lost)
+    SCOPE_FILTER_SCRIPT=$(mktemp /tmp/pr_scope_filter.XXXXXX.py)
+    cat > "$SCOPE_FILTER_SCRIPT" <<'SCOPE_FILTER'
 import sys, re, os
+
+def host_of(line):
+    h = re.sub(r'^https?://', '', line.strip().lower())
+    return h.split('/')[0].split('?')[0].split('#')[0]
 
 def root2(h):
     p = h.split('.')
@@ -295,15 +297,13 @@ def root2(h):
 
 wild_f, domains_f = sys.argv[1], sys.argv[2]
 
-# Wildcard roots: any subdomain of these is in scope
 wild_roots = set()
 if os.path.exists(wild_f):
     for line in open(wild_f):
-        h = line.strip().lower()
+        h = host_of(line)
         if h and '*' not in h:
             wild_roots.add(root2(h))
 
-# Exact scope domains: hosts we queried that are NOT covered by a wildcard root
 exact_domains = set()
 if os.path.exists(domains_f):
     for line in open(domains_f):
@@ -317,14 +317,17 @@ for line in sys.stdin:
         continue
     m = re.match(r'^https?://([^/\s:?#]+)', url)
     if not m:
-        print(url)
         continue
     host = m.group(1).lower()
     if root2(host) in wild_roots or host in exact_domains:
         print(url)
 SCOPE_FILTER
-    > "$WAYMORE_TMP"
+    cat "$WAYMORE_OUT_DIR"/*.txt 2>/dev/null | sort -u \
+        | python3 "$SCOPE_FILTER_SCRIPT" "$_proj/wild.txt" "$WAYMORE_DOMAINS_TMP" \
+        > "$WAYMORE_TMP"
+    rm -f "$SCOPE_FILTER_SCRIPT"
     rm -rf "$WAYMORE_OUT_DIR"
+
     result "$(wc -l < "$WAYMORE_TMP" | tr -d ' ')" "waymore (scope-filtered)"
 elif [[ $USE_WAYMORE -eq 1 ]]; then
     echo -e "          ${YELLOW}warning:${NC} waymore not found — install: pipx install git+https://github.com/xnl-h4ck3r/waymore.git"; echo ""
