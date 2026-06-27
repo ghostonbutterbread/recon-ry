@@ -16,6 +16,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 source "$SCRIPT_DIR/src/logger.sh"
 source "$SCRIPT_DIR/src/config.sh"
+source "$SCRIPT_DIR/src/auth.sh"
 source "$SCRIPT_DIR/src/tools.sh"
 source "$SCRIPT_DIR/src/output.sh"
 source "$SCRIPT_DIR/src/stages.sh"

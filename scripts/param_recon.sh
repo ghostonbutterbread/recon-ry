@@ -49,6 +49,7 @@ USE_HAKRAWLER=0
 USE_GOSPIDER=0
 KATANA_DEPTH=5
 EXT_FILTER="png,jpg,jpeg,gif,svg,ico,woff,woff2,eot,ttf,otf,webp,mp4,mp3,pdf,zip,gz,tar,map,css"
+AUTH_HEADERS=()
 
 usage() {
     cat <<EOF
@@ -72,6 +73,7 @@ Usage: $0 [options]
   --gospider           Enable gospider (disabled by default)
   --no-hakrawler       Skip hakrawler
   --no-gospider        Skip gospider
+  --auth-header <h>    Header for supported active HTTP tools, repeatable
 
 Output:
   params_raw.txt   Combined raw URLs from all sources (sorted-unique)
@@ -99,6 +101,7 @@ while [[ $# -gt 0 ]]; do
         --no-hakrawler) USE_HAKRAWLER=0; shift ;;
         --gospider) USE_GOSPIDER=1; shift ;;
         --no-gospider) USE_GOSPIDER=0; shift ;;
+        --auth-header) AUTH_HEADERS+=("$2"); shift 2 ;;
         -h|--help) usage ;;
         *) echo "Unknown option: $1"; usage ;;
     esac
@@ -236,6 +239,9 @@ echo ""
 echo -e "  ${DIM}Input:${NC}       $INPUT  ($URL_COUNT URLs, $DOMAIN_COUNT domains)"
 echo -e "  ${DIM}Output:${NC}      $OUTDIR"
 echo -e "  ${DIM}Rate limit:${NC}  $RATE req/s$([ -n "$RATE_OVERRIDE" ] && echo " (from -r flag)" || echo " (from rate_limit.conf)")"
+if [[ ${#AUTH_HEADERS[@]} -gt 0 ]]; then
+    echo -e "  ${DIM}Auth:${NC}        enabled for supported active HTTP tools (${#AUTH_HEADERS[@]} headers)"
+fi
 echo ""
 echo -e "  ${CYAN}Passive:${NC}"
 echo -e "    waybackurls  $([ $USE_WAYBACKURLS -eq 1 ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}skip${NC}")"
@@ -338,12 +344,17 @@ fi
 # ─── ACTIVE: katana ───────────────────────────────────────────────────────────
 phase "katana (active crawler + JS parsing)"
 if [[ $USE_KATANA -eq 1 ]] && command -v katana &>/dev/null; then
+    KATANA_AUTH_ARGS=()
+    for header in "${AUTH_HEADERS[@]}"; do
+        KATANA_AUTH_ARGS+=("-H" "$header")
+    done
     cat "$INPUT" | katana \
         -silent \
         -jc \
         -d "$KATANA_DEPTH" \
         -rl "$RATE" \
         -ef "$EXT_FILTER" \
+        "${KATANA_AUTH_ARGS[@]}" \
         2>/dev/null > "$KATANA_TMP"
     result "$(wc -l < "$KATANA_TMP" | tr -d ' ')" "katana"
 elif [[ $USE_KATANA -eq 1 ]]; then

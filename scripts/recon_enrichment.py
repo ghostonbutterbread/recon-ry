@@ -219,6 +219,12 @@ def run_command(command: list[str]) -> int:
         return 127
 
 
+def append_auth_headers(command: list[str], headers: list[str]) -> None:
+    for header in headers:
+        if header:
+            command.extend(["-H", header])
+
+
 def normalized_rate_limit(value: str | None) -> int:
     if value in {None, ""}:
         return 0
@@ -323,6 +329,7 @@ def cmd_run_httpx(args: argparse.Namespace) -> int:
     rate_limit = normalized_rate_limit(args.rate_limit)
     if rate_limit:
         command.extend(["-rate-limit", str(rate_limit)])
+    append_auth_headers(command, args.auth_header or [])
     try:
         code = run_command(command)
         if code != 0:
@@ -446,6 +453,7 @@ def build_parser() -> argparse.ArgumentParser:
     httpx.add_argument("--output", type=Path, required=True)
     httpx.add_argument("--project-dir", type=Path, required=True)
     httpx.add_argument("--rate-limit", default="")
+    httpx.add_argument("--auth-header", action="append", default=[], help="Header for authenticated httpx probes; repeatable.")
     httpx.set_defaults(func=cmd_run_httpx)
 
     rank = subparsers.add_parser("rank-urls", help="Rank URLs for focused review")

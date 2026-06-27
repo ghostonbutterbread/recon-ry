@@ -122,6 +122,12 @@ execute_tool() {
     command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
     command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
     command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
+    local auth_args
+    if ! auth_args=$(auth_args_for_tool "$tool"); then
+        log_error "Auth seed could not be rendered for $tool"
+        return 1
+    fi
+    command="${command//\{\{AUTH_ARGS\}\}/$auth_args}"
     # Per-tool directories and virtualenvs
     local venv_enabled
     venv_enabled=$(get_install_info "$tool" "venv" | tr '[:upper:]' '[:lower:]')
@@ -163,6 +169,11 @@ execute_tool() {
         command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
         command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
         command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
+        if ! auth_args=$(auth_args_for_tool "$tool"); then
+            log_error "Auth seed could not be rendered for $tool"
+            return 1
+        fi
+        command="${command//\{\{AUTH_ARGS\}\}/$auth_args}"
         if [[ -n "$venv_path" ]]; then
             command="${command//\{\{VENV_PYTHON\}\}/$venv_path/bin/python}"
         else
@@ -179,7 +190,7 @@ execute_tool() {
     if [[ -n "$rate_limit" && "$rate_limit" != "0" ]]; then
         log_verbose "Rate limit for $tool: $rate_limit req/s"
     fi
-    log_debug "Command: $command"
+    log_debug "Command: $(redact_auth_command "$command")"
 
     # Resolve effective timeout: flag > config default; 0 = disabled
     local effective_timeout
