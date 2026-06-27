@@ -279,7 +279,7 @@ phase "waymore (Wayback + CommonCrawl + URLScan + OTX)"
 if [[ $USE_WAYMORE -eq 1 ]] && command -v waymore &>/dev/null; then
     WAYMORE_OUT_DIR=$(mktemp -d /tmp/pr_waymore_out.XXXXXX)
     while IFS= read -r domain; do
-        waymore -i "$domain" -mode U -oU "$WAYMORE_OUT_DIR/${domain}.txt" 2>/dev/null || true
+        waymore -i "$domain" -mode U -oU "$WAYMORE_OUT_DIR/${domain}.txt" -xS virustotal 2>&1 | grep -v "^\s*$" >&2 || true
     done < "$WAYMORE_DOMAINS_TMP"
     # Scope filter: waymore returns subdomain URLs for every domain it queries.
     # For wildcard scope entries (roots in wild.txt) any subdomain is fine.
