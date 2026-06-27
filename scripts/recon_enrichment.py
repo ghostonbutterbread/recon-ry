@@ -43,7 +43,15 @@ def extract_host(value: str) -> str:
     if "://" not in candidate:
         candidate = f"//{candidate}"
     parsed = urlparse(candidate)
-    host = parsed.hostname or candidate.split("/")[0].split(":")[0]
+    host = parsed.hostname
+    if not host:
+        token = candidate.split("/")[0].removeprefix("//")
+        if token.startswith("[") and "]" in token:
+            host = token[1:].split("]", 1)[0]
+        elif token.count(":") == 1:
+            host = token.rsplit(":", 1)[0]
+        else:
+            host = token
     return host.strip().lower().strip(".")
 
 
@@ -298,7 +306,8 @@ def cmd_run_naabu(args: argparse.Namespace) -> int:
         port = item.get("port")
         protocol = item.get("protocol") or item.get("scheme") or "tcp"
         if host and port:
-            mapped_hosts = ip_to_hosts.get(str(host), [str(host)])
+            host_key = extract_host(str(host)) or str(host).strip().strip("[]")
+            mapped_hosts = ip_to_hosts.get(host_key, ip_to_hosts.get(str(host), [host_key or str(host)]))
             for mapped_host in mapped_hosts:
                 ports_rows.append(f"{mapped_host}:{port}/{protocol}")
 
@@ -379,12 +388,30 @@ WAF_HINTS = {
 INTERESTING_PORTS = {"21", "22", "25", "80", "81", "443", "445", "8080", "8443", "9000", "9200", "9443"}
 
 
+def parse_host_port_row(row: str) -> tuple[str, str] | None:
+    token = row.split()[0] if row.split() else ""
+    host_port = token.split("/", 1)[0].strip()
+    if not host_port:
+        return None
+    if host_port.startswith("["):
+        match = re.match(r"^\[([^\]]+)\]:(\d+)$", host_port)
+        if not match:
+            return None
+        return match.group(1).lower(), match.group(2)
+    if ":" not in host_port:
+        return None
+    host, port = host_port.rsplit(":", 1)
+    if not host or not port.isdigit():
+        return None
+    return host.strip().lower().strip("[]").strip("."), port
+
+
 def load_hosts_from_host_port(rows: list[str]) -> set[str]:
     hosts: set[str] = set()
     for row in rows:
-        host = row.split()[0].split(":")[0].strip()
-        if host:
-            hosts.add(host)
+        parsed = parse_host_port_row(row)
+        if parsed:
+            hosts.add(parsed[0])
     return hosts
 
 
@@ -397,9 +424,10 @@ def cmd_rank_urls(args: argparse.Namespace) -> int:
 
     port_map: dict[str, list[str]] = {}
     for row in port_rows:
-        match = re.match(r"^([^:]+):(\d+)", row)
-        if match:
-            port_map.setdefault(match.group(1), []).append(match.group(2))
+        parsed = parse_host_port_row(row)
+        if parsed:
+            host, port = parsed
+            port_map.setdefault(host, []).append(port)
 
     ranked: list[dict[str, object]] = []
     for url in alive:
