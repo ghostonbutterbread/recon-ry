@@ -387,6 +387,7 @@ if [[ $USE_XNLINKFINDER -eq 1 ]] && command -v xnLinkFinder &>/dev/null; then
     xnLinkFinder \
         -i "$INPUT" \
         -o "$XNLF_TMP" \
+        -sf "$WAYMORE_DOMAINS_TMP" \
         -t 5 \
         2>/dev/null || true
     result "$(wc -l < "$XNLF_TMP" | tr -d ' ')" "xnLinkFinder"

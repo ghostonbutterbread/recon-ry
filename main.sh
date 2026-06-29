@@ -506,6 +506,14 @@ parse_args() {
                 ;;
             --auth-seed)
                 AUTH_SEED_FILE="$2"
+                RECON_RY_AUTH_SEED="$2"
+                export RECON_RY_AUTH_SEED
+                shift 2
+                ;;
+            --auth-seed-file)
+                AUTH_SEED_FILE="$2"
+                RECON_RY_AUTH_SEED="$2"
+                export RECON_RY_AUTH_SEED
                 shift 2
                 ;;
             --auth-header)
