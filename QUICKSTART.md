@@ -109,6 +109,7 @@ Built-in profiles:
 
 - `--full` - Complete reconnaissance (default)
 - `--subs` - Subdomain enumeration only
+- `--passive` - Passive archive URL and parameter discovery only
 - `--secrets` - Secret scanning
 - `--dork` - Google dorking
 - `--profile fast` - Quick scan (subs + alive check)

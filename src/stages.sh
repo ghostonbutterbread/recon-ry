@@ -105,6 +105,16 @@ execute_stage() {
         fi
     fi
 
+    # Passive archive profiles can run from a URL/domain seed without requiring
+    # a prior live stage or a pre-existing wild.txt.
+    if [[ "$stage" == "passive_url_discovery" || "$stage" == "passive_param_discovery" ]]; then
+        if [[ ! -s "$project_dir/wild.txt" && ! -s "$temp_dir/wild.txt" && -n "$domain" ]]; then
+            mkdir -p "$temp_dir"
+            printf '%s\n' "$domain" > "$temp_dir/wild.txt"
+            log_info "Passive seed domain: $domain"
+        fi
+    fi
+
     # Check dependencies
     if ! check_stage_dependencies "$stage" "$project_dir"; then
         log_warning "Stage $stage dependencies not met, skipping"
@@ -145,6 +155,9 @@ execute_stage() {
         local output_file="$project_dir/$primary_output"
         if [[ "$primary_output" == "wild.txt" || "$primary_output" == "urls.txt" ]]; then
             output_file="$temp_dir/$primary_output"
+        fi
+        if [[ "$stage" == "passive_url_discovery" && "$primary_output" == "urls.txt" ]]; then
+            output_file="$project_dir/$primary_output"
         fi
 
         # Get tool inputs

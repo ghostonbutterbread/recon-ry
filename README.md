@@ -85,7 +85,7 @@ Run help:
 ## Recon Options
 
 - `--profile <name>`
-- `--full`, `--subs`, `--fast`, `--urls`, `--dork`, `--eye [url|file]`
+- `--full`, `--subs`, `--fast`, `--urls`, `--passive`, `--dork`, `--eye [url|file]`
 - `--dir` (directory enumeration only)
 - `--project <dir>`
 - `--url <url-or-domain>`
@@ -132,6 +132,7 @@ Defined in `config/profiles.yaml`:
 - `subs`: `subdomain_enum`
 - `fast`: `subdomain_enum`, `alive_check`
 - `urls`: `url_discovery`, `alive_check`
+- `passive`: `passive_url_discovery`, `passive_param_discovery`, `passive_param_normalize`
 - `secrets`: `secret_scan`
 - `dork`: `dork`
 - `eye`: `eyewitness`

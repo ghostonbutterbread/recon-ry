@@ -221,6 +221,39 @@ else
     echo "PASS: auth redaction hides secret values"
 fi
 
+passive_profile_check="$(python3 - "$SCRIPT_DIR/config/profiles.yaml" "$SCRIPT_DIR/config/general.yaml" <<'PY'
+import sys, yaml
+
+profiles_path, general_path = sys.argv[1], sys.argv[2]
+profiles = yaml.safe_load(open(profiles_path)) or {}
+general = yaml.safe_load(open(general_path)) or {}
+stages = profiles.get("profiles", {}).get("passive", {}).get("stages", [])
+stage_defs = general.get("stages", {})
+
+tools = []
+for stage in stages:
+    tools.extend(stage_defs.get(stage, {}).get("tools", []))
+
+blocked_stages = {"alive_check", "http_fingerprinting", "dir_enum", "secret_scan"}
+blocked_tools = {"httpx", "katana", "hakrawler", "xnlinkfinder", "gospider", "ffuf", "nuclei"}
+bad_stages = sorted(blocked_stages.intersection(stages))
+bad_tools = sorted(blocked_tools.intersection(tools))
+
+if stages != ["passive_url_discovery", "passive_param_discovery", "passive_param_normalize"]:
+    print("bad-stages-order:" + ",".join(stages))
+elif bad_stages or bad_tools:
+    print("blocked:" + ",".join(bad_stages + bad_tools))
+else:
+    print("ok")
+PY
+)"
+if [[ "$passive_profile_check" != "ok" ]]; then
+    echo "FAIL: passive profile includes live-touching stages/tools ($passive_profile_check)"
+    fail=1
+else
+    echo "PASS: passive profile is archive/local only"
+fi
+
 if [[ "$fail" -ne 0 ]]; then
     echo ""
     echo "Self-test FAILED"

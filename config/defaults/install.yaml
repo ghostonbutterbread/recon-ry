@@ -18,6 +18,12 @@ tools:
     binary_path: "scripts/param_recon.sh"
     dependencies: [waybackurls, katana, hakrawler, uro]
 
+  passive_param_recon:
+    install_method: script
+    install_command: "# Bundled script - no installation needed"
+    binary_path: "scripts/param_recon.sh"
+    dependencies: [waybackurls, uro]
+
   dork_scan:
     install_method: inline
     install_command: "# Built-in command - no installation needed"

@@ -49,6 +49,13 @@ profiles:
       - url_discovery
       - alive_check
 
+  passive:
+    description: "Passive archive URL and parameter discovery"
+    stages:
+      - passive_url_discovery
+      - passive_param_discovery
+      - passive_param_normalize
+
   fingerprint:
     description: "Enrich existing live hosts and rank review targets"
     stages:

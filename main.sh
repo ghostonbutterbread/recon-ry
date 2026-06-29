@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source all modules
 source "$SCRIPT_DIR/src/logger.sh"
 source "$SCRIPT_DIR/src/config.sh"
+source "$SCRIPT_DIR/src/auth.sh"
 source "$SCRIPT_DIR/src/tools.sh"
 source "$SCRIPT_DIR/src/stages.sh"
 source "$SCRIPT_DIR/src/output.sh"
@@ -116,6 +117,7 @@ Options:
     --subs              Subdomain enumeration only
     --fast              Quick scan (subdomain + alive check)
     --urls              URL discovery and alive check (requires wild.txt)
+    --passive           Passive archive URL and parameter discovery only
     --params            Parameter discovery (param_recon)
     --dork              Google dorking only
     --eye [url|file]    EyeWitness screenshots and report only (optional URL or file)
@@ -137,6 +139,7 @@ Profiles:
     subs                Subdomain enumeration only
     fast                Quick scan (subdomain + alive check)
     urls                URL discovery and alive check
+    passive             Passive archive URL and parameter discovery
     params              Parameter discovery (param_recon)
     secrets             Secret scanning on existing data
     dork                Google dorking
@@ -465,6 +468,10 @@ parse_args() {
                 ;;
             --urls)
                 PROFILE="urls"
+                shift
+                ;;
+            --passive)
+                PROFILE="passive"
                 shift
                 ;;
             --params)

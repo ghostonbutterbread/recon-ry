@@ -175,12 +175,14 @@ python3 -c "
 import sys, re
 seen = set()
 for line in sys.stdin:
-    m = re.search(r'https?://([^/\s:]+)', line)
-    if m:
-        d = m.group(1).strip(\"'\").lower()
-        if d not in seen:
-            seen.add(d)
-            print(d)
+    value = line.strip().strip(\"'\").lower()
+    if not value or '*' in value:
+        continue
+    value = re.sub(r'^https?://', '', value)
+    host = value.split('/')[0].split('?')[0].split('#')[0].split(':')[0].strip('.')
+    if host and host not in seen:
+        seen.add(host)
+        print(host)
 " < "$INPUT" | sort -u > "$DOMAINS_TMP"
 DOMAIN_COUNT=$(wc -l < "$DOMAINS_TMP" | tr -d ' ')
 URL_COUNT=$(wc -l < "$INPUT" | tr -d ' ')

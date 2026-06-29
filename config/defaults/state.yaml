@@ -8,6 +8,7 @@ tools:
   waybackurls: true
   gau: true
   waymore: true
+  passive_param_recon: true
   xnlinkfinder: true
   gospider: false
   httpx: true
@@ -24,9 +25,12 @@ tools:
 stages:
   subdomain_enum: true
   url_discovery: true
+  passive_url_discovery: true
   alive_check: true
   eyewitness: true
   param_discovery: true
+  passive_param_discovery: true
+  passive_param_normalize: true
   dir_enum: true
   secret_scan: true
   dork: false

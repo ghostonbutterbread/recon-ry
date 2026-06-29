@@ -46,6 +46,13 @@ stages:
       - waybackurls
       - gau
 
+  passive_url_discovery:
+    parallel: false
+    description: "Passive URL discovery from archives"
+    tools:
+      - waybackurls
+      - gau
+
   alive_check:
     parallel: false
     depends_on: [url_discovery]
@@ -89,6 +96,21 @@ stages:
     description: "Parameter discovery"
     tools:
       - param_recon
+      - uro
+      - js_files
+      - unclutter_jsfiles
+
+  passive_param_discovery:
+    parallel: false
+    description: "Passive parameter discovery from archives"
+    tools:
+      - passive_param_recon
+
+  passive_param_normalize:
+    parallel: false
+    depends_on: [passive_param_discovery]
+    description: "Normalize passive parameter and JavaScript outputs"
+    tools:
       - uro
       - js_files
       - unclutter_jsfiles
@@ -252,6 +274,12 @@ tools:
     auth_supported: true
     command: "rm -rf {{PROJECT_DIR}}/.param_recon_tmp && bash {{RECON_DIR}}/scripts/param_recon.sh -i {{INPUT}} -o {{PROJECT_DIR}}/.param_recon_tmp{{AUTH_ARGS}} && cat {{PROJECT_DIR}}/.param_recon_tmp/params_raw.txt > {{OUTPUT}}"
     required_files: [alive.txt]
+    outputs: [params_raw.txt]
+
+  passive_param_recon:
+    type: script
+    command: "rm -rf {{PROJECT_DIR}}/.param_recon_tmp && bash {{RECON_DIR}}/scripts/param_recon.sh -i {{INPUT}} -o {{PROJECT_DIR}}/.param_recon_tmp --passive-only && cat {{PROJECT_DIR}}/.param_recon_tmp/params_raw.txt > {{OUTPUT}}"
+    required_files: [wild.txt]
     outputs: [params_raw.txt]
 
   gau_params:

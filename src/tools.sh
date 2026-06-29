@@ -200,6 +200,7 @@ execute_tool() {
 
     # Get tool command
     local command=$(get_tool_info "$tool" "command")
+    local command_template="$command"
 
     # Get rate limit for this tool
     local rate_limit=$(get_rate_limit "$tool")
@@ -282,7 +283,7 @@ execute_tool() {
     fi
 
     log_verbose "Running: $tool"
-    if [[ -n "$rate_limit" && "$rate_limit" != "0" ]]; then
+    if [[ -n "$rate_limit" && "$rate_limit" != "0" && "$command_template" == *"{{RATE_LIMIT}}"* ]]; then
         log_verbose "Rate limit for $tool: $rate_limit req/s"
     fi
     log_debug "Command: $(redact_command "$command")"
