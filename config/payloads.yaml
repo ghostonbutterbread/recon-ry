@@ -5,11 +5,11 @@ payloads:
       default:
         description: Default ffuf directory brute-force
         command: ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2
-          -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} -o {{OUTPUT}}
+          -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} {{AUTH_ARGS}} -o {{OUTPUT}}
       dirsearch_like:
         description: Dirsearch-like extensions and wordlist
         command: ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2
-          -e php,asp,aspx,jsp,html,zip,jar -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}}
+          -e php,asp,aspx,jsp,html,zip,jar -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} {{AUTH_ARGS}}
           -o {{OUTPUT}}
   assetfinder:
     items:
@@ -24,7 +24,7 @@ payloads:
     items:
       default:
         description: Default command from general.yaml
-        command: katana -list {{INPUT}} -d 3 -silent -jc -kf all -rl {{RATE_LIMIT}}
+        command: katana -list {{INPUT}} -d 3 -silent -jc -kf all -rl {{RATE_LIMIT}} {{AUTH_ARGS}}
           -o {{OUTPUT}}
     active: default
   amass:
@@ -57,5 +57,5 @@ payloads:
       default:
         description: Default command from general.yaml
         command: nuclei -list {{INPUT}} -t {{RECON_DIR}}/wordlists/nuclei-templates/exposures/
-          -silent -rl {{RATE_LIMIT}} -o {{OUTPUT}}
+          -silent -rl {{RATE_LIMIT}} {{AUTH_ARGS}} -o {{OUTPUT}}
     active: default

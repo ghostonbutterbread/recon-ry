@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Source all modules
 source "$SCRIPT_DIR/src/logger.sh"
 source "$SCRIPT_DIR/src/config.sh"
+source "$SCRIPT_DIR/src/auth.sh"
 source "$SCRIPT_DIR/src/tools.sh"
 source "$SCRIPT_DIR/src/stages.sh"
 source "$SCRIPT_DIR/src/output.sh"
@@ -119,6 +120,7 @@ Options:
     --project <dir>     Project directory path (required for saving results)
     --url <url>         Target URL/domain to scan
     --timeout <secs>    Kill each tool after this many seconds (0 = no timeout, omit = config default)
+    --auth-seed <file>  Locked-down auth seed JSON for supported HTTP tools
     -v                  Verbose output (show tool names)
     -vv                 Very verbose (show full tool output)
     --dry-run           Show what would be executed without running
@@ -488,6 +490,11 @@ parse_args() {
                 ;;
             --timeout)
                 TOOL_TIMEOUT="$2"
+                shift 2
+                ;;
+            --auth-seed|--auth-seed-file)
+                RECON_RY_AUTH_SEED="$2"
+                export RECON_RY_AUTH_SEED
                 shift 2
                 ;;
             -v)

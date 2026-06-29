@@ -154,7 +154,7 @@ tools:
   # URL Discovery
   katana:
     type: binary
-    command: "katana -list {{INPUT}} -d 3 -silent -jc -kf all -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
+    command: "katana -list {{INPUT}} -d 3 -silent -jc -kf all -rl {{RATE_LIMIT}} {{AUTH_ARGS}} -o {{OUTPUT}}"
     required_files: [wild.txt]
     outputs: [urls.txt]
 
@@ -182,7 +182,7 @@ tools:
   # Alive Check
   httpx:
     type: binary
-    command: "httpx -list {{INPUT}} -silent -mc 200,201,202,203,204,301,302,307,308,401,403,405 -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
+    command: "httpx -list {{INPUT}} -silent -mc 200,201,202,203,204,301,302,307,308,401,403,405 -rl {{RATE_LIMIT}} {{AUTH_ARGS}} -o {{OUTPUT}}"
     required_files: [urls.txt]
     outputs: [alive.txt]
 
@@ -210,7 +210,7 @@ tools:
     cdn_detect: true
     waf_tagging: true
     filter_mode: tag_only
-    command: "python3 {{RECON_DIR}}/scripts/recon_enrichment.py run-httpx --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --rate-limit {{RATE_LIMIT}}"
+    command: "python3 {{RECON_DIR}}/scripts/recon_enrichment.py run-httpx --input {{INPUT}} --output {{OUTPUT}} --project-dir {{PROJECT_DIR}} --rate-limit {{RATE_LIMIT}} {{AUTH_ARGS}}"
     required_files: [alive.txt]
     outputs: [httpx.jsonl, waf_hosts.txt, unprotected_hosts.txt]
 
@@ -225,7 +225,7 @@ tools:
   # Parameter Discovery
   param_recon:
     type: script
-    command: "rm -rf {{PROJECT_DIR}}/.param_recon_tmp && bash {{RECON_DIR}}/scripts/param_recon.sh -i {{INPUT}} -o {{PROJECT_DIR}}/.param_recon_tmp && cat {{PROJECT_DIR}}/.param_recon_tmp/params_raw.txt > {{OUTPUT}}"
+    command: "rm -rf {{PROJECT_DIR}}/.param_recon_tmp && bash {{RECON_DIR}}/scripts/param_recon.sh -i {{INPUT}} -o {{PROJECT_DIR}}/.param_recon_tmp {{AUTH_ARGS}} && cat {{PROJECT_DIR}}/.param_recon_tmp/params_raw.txt > {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [params_raw.txt]
 
@@ -257,7 +257,7 @@ tools:
   # Directory Enumeration
   ffuf:
     type: binary
-    command: "ffuf -noninteractive -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2 -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} -o {{OUTPUT}}"
+    command: "ffuf -noninteractive -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2 -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} {{AUTH_ARGS}} -o {{OUTPUT}}"
     required_files: [alive.txt]
     outputs: [dirs.txt]
 
@@ -265,7 +265,7 @@ tools:
   # Secret Scanning
   nuclei:
     type: binary
-    command: "nuclei -list {{INPUT}} -t {{RECON_DIR}}/wordlists/nuclei-templates/exposures/ -silent -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
+    command: "nuclei -list {{INPUT}} -t {{RECON_DIR}}/wordlists/nuclei-templates/exposures/ -silent -rl {{RATE_LIMIT}} {{AUTH_ARGS}} -o {{OUTPUT}}"
     required_files: [urls.txt]
     outputs: [secrets.txt]
 

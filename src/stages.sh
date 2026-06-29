@@ -277,6 +277,10 @@ run_recon_project() {
 
     log_info "Starting recon with profile: $profile"
     log_info "Project directory: $project_dir"
+    if auth_seed_is_enabled; then
+        write_auth_metadata "$project_dir"
+        log_info "Auth seed enabled for supported HTTP tools; metadata written to $project_dir/.auth/auth_metadata.json"
+    fi
 
     # Check if project directory has existing data
     local has_urls=false
