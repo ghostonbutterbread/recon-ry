@@ -4,6 +4,103 @@
 
 # Shared interruption flag (best-effort; may be overridden by parent shell)
 : "${INTERRUPTED:=false}"
+: "${AUTH_SEED_FILE:=${RECON_RY_AUTH_SEED:-}}"
+: "${AUTH_HOST:=${RECON_RY_AUTH_HOST:-}}"
+
+declare -p AUTH_HEADERS >/dev/null 2>&1 || declare -a AUTH_HEADERS=()
+declare -p AUTH_COOKIES >/dev/null 2>&1 || declare -a AUTH_COOKIES=()
+
+auth_is_enabled() {
+    [[ -n "${AUTH_SEED_FILE:-}" || ${#AUTH_HEADERS[@]} -gt 0 || ${#AUTH_COOKIES[@]} -gt 0 ]]
+}
+
+build_auth_args() {
+    local tool="$1"
+
+    auth_is_enabled || return 0
+    tool_supports_auth "$tool" || return 0
+
+    case "$tool" in
+        param_recon|http_fingerprinting)
+            if [[ -n "${AUTH_SEED_FILE:-}" ]]; then
+                printf ' --auth-seed %q' "$AUTH_SEED_FILE"
+            fi
+            if [[ -n "${AUTH_HOST:-}" ]]; then
+                printf ' --auth-host %q' "$AUTH_HOST"
+            fi
+            local header
+            for header in "${AUTH_HEADERS[@]}"; do
+                printf ' --auth-header %q' "$header"
+            done
+            local cookie
+            for cookie in "${AUTH_COOKIES[@]}"; do
+                printf ' --cookie %q' "$cookie"
+            done
+            ;;
+        katana|httpx|ffuf|nuclei)
+            local auth_cmd=(python3 "$SCRIPT_DIR/scripts/auth_args.py" --format shell-header-flags)
+            if [[ -n "${AUTH_SEED_FILE:-}" ]]; then
+                auth_cmd+=(--seed-file "$AUTH_SEED_FILE")
+            fi
+            if [[ -n "${AUTH_HOST:-}" ]]; then
+                auth_cmd+=(--auth-host "$AUTH_HOST")
+            fi
+            local header
+            for header in "${AUTH_HEADERS[@]}"; do
+                auth_cmd+=(--auth-header "$header")
+            done
+            local cookie
+            for cookie in "${AUTH_COOKIES[@]}"; do
+                auth_cmd+=(--cookie "$cookie")
+            done
+            "${auth_cmd[@]}"
+            ;;
+    esac
+}
+
+redact_command() {
+    python3 - "$1" <<'PY'
+import shlex
+import sys
+
+command = sys.argv[1]
+try:
+    parts = shlex.split(command)
+except ValueError:
+    print(command)
+    raise SystemExit
+
+redacted = []
+skip_next = False
+for idx, part in enumerate(parts):
+    if skip_next:
+        skip_next = False
+        continue
+    redacted.append(part)
+    if part in {"-H", "--auth-header", "--cookie"} and idx + 1 < len(parts):
+        value = parts[idx + 1]
+        if ":" in value:
+            name = value.split(":", 1)[0].strip()
+            redacted.append(f"{name}: REDACTED")
+        else:
+            redacted.append("REDACTED")
+        skip_next = True
+print(" ".join(shlex.quote(part) for part in redacted))
+PY
+}
+
+apply_auth_args_to_command() {
+    local command="$1"
+    local auth_args="$2"
+
+    if [[ "$command" == *"{{AUTH_ARGS}}"* ]]; then
+        command="${command//\{\{AUTH_ARGS\}\}/$auth_args}"
+    elif [[ -n "$auth_args" ]]; then
+        command="$command$auth_args"
+    fi
+
+    printf '%s' "$command"
+}
 
 # Check if a tool binary exists
 check_tool_exists() {
@@ -122,12 +219,6 @@ execute_tool() {
     command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
     command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
     command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
-    local auth_args
-    if ! auth_args=$(auth_args_for_tool "$tool"); then
-        log_error "Auth seed could not be rendered for $tool"
-        return 1
-    fi
-    command="${command//\{\{AUTH_ARGS\}\}/$auth_args}"
     # Per-tool directories and virtualenvs
     local venv_enabled
     venv_enabled=$(get_install_info "$tool" "venv" | tr '[:upper:]' '[:lower:]')
@@ -169,11 +260,6 @@ execute_tool() {
         command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
         command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
         command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
-        if ! auth_args=$(auth_args_for_tool "$tool"); then
-            log_error "Auth seed could not be rendered for $tool"
-            return 1
-        fi
-        command="${command//\{\{AUTH_ARGS\}\}/$auth_args}"
         if [[ -n "$venv_path" ]]; then
             command="${command//\{\{VENV_PYTHON\}\}/$venv_path/bin/python}"
         else
@@ -186,11 +272,20 @@ execute_tool() {
         command="source \"$venv_path/bin/activate\" && $command"
     fi
 
+    local auth_args
+    auth_args=$(build_auth_args "$tool")
+    command=$(apply_auth_args_to_command "$command" "$auth_args")
+    if [[ -n "$auth_args" ]]; then
+        log_verbose "Auth enabled for $tool"
+    elif auth_is_enabled && tool_supports_auth "$tool"; then
+        log_warning "Auth requested but no usable auth material was available for $tool"
+    fi
+
     log_verbose "Running: $tool"
     if [[ -n "$rate_limit" && "$rate_limit" != "0" ]]; then
         log_verbose "Rate limit for $tool: $rate_limit req/s"
     fi
-    log_debug "Command: $(redact_auth_command "$command")"
+    log_debug "Command: $(redact_command "$command")"
 
     # Resolve effective timeout: flag > config default; 0 = disabled
     local effective_timeout

@@ -7,9 +7,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$SCRIPT_DIR/src/logger.sh"
 source "$SCRIPT_DIR/src/config.sh"
 source "$SCRIPT_DIR/src/output.sh"
+source "$SCRIPT_DIR/src/tools.sh"
 
 logger_init 0
 load_general_config
+load_payloads_config
 
 project_dir="/tmp/reconry_selftest_${RANDOM}${RANDOM}"
 date_dir=""
@@ -158,6 +160,66 @@ expect_count "$date_dir/jsfiles.txt" 3
 expect_count "$date_dir/dirs.txt" 3
 expect_count "$date_dir/secrets.txt" 2
 expect_count "$date_dir/dorks.txt" 2
+
+auth_seed="$project_dir/auth.json"
+cat > "$auth_seed" << 'EOF'
+{
+  "headers": {
+    "Authorization": "Bearer SECRET_TOKEN"
+  },
+  "cookies": [
+    {"name": "sid", "value": "SECRET_COOKIE", "url": "https://a.example.com"},
+    {"name": "other", "value": "OTHER_COOKIE", "url": "https://other.example.com"}
+  ]
+}
+EOF
+chmod 600 "$auth_seed"
+
+AUTH_SEED_FILE="$auth_seed"
+AUTH_HOST="a.example.com"
+AUTH_HEADERS=("X-CSRF-Token: CSRF_SECRET")
+AUTH_COOKIES=("manual=COOKIE_SECRET")
+
+auth_args="$(build_auth_args katana)"
+if [[ "$auth_args" != *"Authorization: Bearer SECRET_TOKEN"* || "$auth_args" != *"Cookie: sid=SECRET_COOKIE"* || "$auth_args" == *"OTHER_COOKIE"* ]]; then
+    echo "FAIL: auth args did not include only matching seed auth material"
+    fail=1
+else
+    echo "PASS: auth args include matching seed auth material"
+fi
+
+passive_auth_args="$(build_auth_args subfinder)"
+if [[ -n "$passive_auth_args" ]]; then
+    echo "FAIL: passive tool unexpectedly received auth args"
+    fail=1
+else
+    echo "PASS: passive tool did not receive auth args"
+fi
+
+param_auth_args="$(build_auth_args param_recon)"
+if [[ "$param_auth_args" != *"--auth-seed"* || "$param_auth_args" != *"--auth-header"* || "$param_auth_args" != *"--cookie"* ]]; then
+    echo "FAIL: param_recon did not receive forwarded auth controls"
+    fail=1
+else
+    echo "PASS: param_recon receives forwarded auth controls"
+fi
+
+param_command="$(get_tool_info param_recon command)"
+rendered_param_command="$(apply_auth_args_to_command "$param_command" "$param_auth_args")"
+if [[ "$rendered_param_command" == *"param_recon.sh"*"--auth-seed"*"&& cat"* && "$rendered_param_command" != *"&& cat"*"--auth-seed"* ]]; then
+    echo "PASS: param_recon auth args are inserted into the script invocation"
+else
+    echo "FAIL: param_recon auth args were not inserted into the script invocation"
+    fail=1
+fi
+
+redacted_command="$(redact_command "katana -H 'Authorization: Bearer SECRET_TOKEN' -H 'Cookie: sid=SECRET_COOKIE'")"
+if [[ "$redacted_command" == *"SECRET_TOKEN"* || "$redacted_command" == *"SECRET_COOKIE"* ]]; then
+    echo "FAIL: auth redaction leaked secret values"
+    fail=1
+else
+    echo "PASS: auth redaction hides secret values"
+fi
 
 if [[ "$fail" -ne 0 ]]; then
     echo ""

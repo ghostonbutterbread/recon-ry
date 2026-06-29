@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render redacted or executable auth arguments for recon-ry tools."""
+"""Auth seed/header helpers for recon-ry HTTP-capable tools."""
 
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-
 SUPPORTED_TOOLS = {
     "ffuf",
     "http_fingerprinting",
@@ -21,6 +20,13 @@ SUPPORTED_TOOLS = {
     "nuclei",
     "param_recon",
 }
+
+
+def clean_header(value: str | None) -> str | None:
+    value = str(value or "").strip()
+    if not value or ":" not in value or "\n" in value or "\r" in value:
+        return None
+    return value
 
 
 def load_seed(path: Path) -> dict[str, Any]:
@@ -33,120 +39,214 @@ def load_seed(path: Path) -> dict[str, Any]:
     return data
 
 
-def host_matches(cookie: dict[str, Any], target_host: str | None) -> bool:
-    if not target_host:
-        return False
-    raw_url = str(cookie.get("url") or "")
-    raw_domain = str(cookie.get("domain") or "")
-    host = urlparse(raw_url).hostname if raw_url else raw_domain.lstrip(".")
-    if not host:
-        return False
-    host = host.lower()
-    target = target_host.lower()
-    return target == host or target.endswith(f".{host}")
+def cookie_host(cookie: dict) -> str:
+    domain = str(cookie.get("domain") or "").lstrip(".").lower()
+    if domain:
+        return domain
+    parsed = urlparse(str(cookie.get("url") or ""))
+    return (parsed.hostname or "").lower()
 
 
-def cookie_header(seed: dict[str, Any], *, target_host: str | None = None) -> str | None:
-    cookies = seed.get("cookies")
-    if not isinstance(cookies, list):
-        return None
-    pairs: list[str] = []
-    for cookie in cookies:
-        if not isinstance(cookie, dict):
-            continue
-        if not host_matches(cookie, target_host):
-            continue
-        name = cookie.get("name")
-        value = cookie.get("value")
-        if name is None or value is None:
-            continue
-        pairs.append(f"{name}={value}")
-    return "; ".join(pairs) if pairs else None
+def cookie_applies(cookie: dict, auth_host: str) -> bool:
+    if not auth_host:
+        return True
+    host = cookie_host(cookie)
+    return not host or auth_host == host or auth_host.endswith("." + host)
 
 
-def headers(seed: dict[str, Any], *, redacted: bool = False, target_host: str | None = None) -> list[str]:
-    rows: list[str] = []
-    raw_headers = seed.get("headers")
-    if isinstance(raw_headers, dict):
-        for key, value in raw_headers.items():
-            if key and value is not None:
-                rows.append(f"{key}: {'<redacted>' if redacted else value}")
-    cookie = cookie_header(seed, target_host=target_host)
-    if cookie:
-        rows.append(f"Cookie: {'<redacted>' if redacted else cookie}")
-    return rows
+def collect_headers(
+    *,
+    seed_file: str = "",
+    auth_host: str = "",
+    cli_headers: list[str] | None = None,
+    cli_cookies: list[str] | None = None,
+) -> list[str]:
+    headers: list[str] = []
+    auth_host = str(auth_host or "").lower()
+
+    if seed_file:
+        seed_path = Path(str(seed_file)).expanduser()
+        if seed_path.is_file():
+            data = load_seed(seed_path)
+            seed_headers = data.get("headers")
+            if isinstance(seed_headers, dict):
+                for name, value in seed_headers.items():
+                    header = clean_header(f"{name}: {value}")
+                    if header:
+                        headers.append(header)
+            cookies = data.get("cookies")
+            if isinstance(cookies, list):
+                parts: list[str] = []
+                for cookie in cookies:
+                    if not isinstance(cookie, dict) or not cookie_applies(cookie, auth_host):
+                        continue
+                    name = str(cookie.get("name") or "").strip()
+                    value = str(cookie.get("value") or "")
+                    if name and "\n" not in name and "\r" not in name and "\n" not in value and "\r" not in value:
+                        parts.append(f"{name}={value}")
+                if parts:
+                    headers.append("Cookie: " + "; ".join(parts))
+
+    for value in cli_headers or []:
+        header = clean_header(value)
+        if header:
+            headers.append(header)
+    for value in cli_cookies or []:
+        header = clean_header(f"Cookie: {value}")
+        if header:
+            headers.append(header)
+    return headers
 
 
-def render_args(seed: dict[str, Any], tool: str, *, redacted: bool = False) -> str:
+def flag_for_tool(tool: str) -> str:
+    return "--auth-header" if tool in {"http_fingerprinting", "param_recon"} else "-H"
+
+
+def shell_header_flags(headers: list[str]) -> str:
+    args: list[str] = []
+    for header in headers:
+        args.extend(["-H", header])
+    return "".join(" " + shlex.quote(arg) for arg in args)
+
+
+def render_args(
+    *,
+    tool: str,
+    seed_file: str = "",
+    auth_host: str = "",
+    cli_headers: list[str] | None = None,
+    cli_cookies: list[str] | None = None,
+    redacted: bool = False,
+) -> str:
     if tool not in SUPPORTED_TOOLS:
         return ""
-    flag = "--auth-header" if tool in {"http_fingerprinting", "param_recon"} else "-H"
+    headers = collect_headers(
+        seed_file=seed_file,
+        auth_host=auth_host or os.environ.get("RECON_RY_AUTH_HOST", ""),
+        cli_headers=cli_headers,
+        cli_cookies=cli_cookies,
+    )
+    flag = flag_for_tool(tool)
     parts: list[str] = []
-    target_host = os.environ.get("RECON_RY_AUTH_HOST")
-    for header in headers(seed, redacted=redacted, target_host=target_host):
-        parts.extend([flag, header])
+    for header in headers:
+        value = header
+        if redacted:
+            name = header.split(":", 1)[0].strip() if ":" in header else "Header"
+            value = f"{name}: <redacted>"
+        parts.extend([flag, value])
     return " ".join(shlex.quote(part) for part in parts)
 
 
-def metadata(seed: dict[str, Any]) -> dict[str, Any]:
-    raw_headers = seed.get("headers") if isinstance(seed.get("headers"), dict) else {}
+def metadata(seed_file: str) -> dict[str, Any]:
+    seed_path = Path(str(seed_file)).expanduser()
+    if not seed_path.is_file():
+        return {"status": "disabled"}
+    data = load_seed(seed_path)
+    raw_headers = data.get("headers") if isinstance(data.get("headers"), dict) else {}
     return {
         "status": "enabled",
-        "account_label": seed.get("account_label"),
-        "pwnfox_color": seed.get("pwnfox_color"),
-        "program": seed.get("program"),
-        "session_source": seed.get("session_source"),
-        "cookie_count": len(seed.get("cookies", [])) if isinstance(seed.get("cookies"), list) else 0,
+        "account_label": data.get("account_label"),
+        "pwnfox_color": data.get("pwnfox_color"),
+        "program": data.get("program"),
+        "session_source": data.get("session_source"),
+        "cookie_count": len(data.get("cookies", [])) if isinstance(data.get("cookies"), list) else 0,
         "header_names": sorted(str(key) for key in raw_headers.keys()),
     }
 
 
-def redact_text(seed: dict[str, Any], text: str) -> str:
+def redact_text(
+    *,
+    text: str,
+    seed_file: str = "",
+    auth_host: str = "",
+    cli_headers: list[str] | None = None,
+    cli_cookies: list[str] | None = None,
+) -> str:
     redacted = text
-    raw_headers = seed.get("headers")
-    if isinstance(raw_headers, dict):
-        for value in raw_headers.values():
-            if value is not None:
-                redacted = redacted.replace(str(value), "<redacted>")
-    cookie = cookie_header(seed, target_host=os.environ.get("RECON_RY_AUTH_HOST"))
-    if cookie:
-        redacted = redacted.replace(cookie, "<redacted>")
-    cookies = seed.get("cookies")
-    if isinstance(cookies, list):
-        for cookie_item in cookies:
-            if isinstance(cookie_item, dict) and cookie_item.get("value") is not None:
-                redacted = redacted.replace(str(cookie_item["value"]), "<redacted>")
+    for header in collect_headers(
+        seed_file=seed_file,
+        auth_host=auth_host or os.environ.get("RECON_RY_AUTH_HOST", ""),
+        cli_headers=cli_headers,
+        cli_cookies=cli_cookies,
+    ):
+        if ":" in header:
+            name, value = header.split(":", 1)
+            redacted = redacted.replace(value.strip(), "<redacted>")
+            redacted = redacted.replace(header, f"{name}: <redacted>")
+        else:
+            redacted = redacted.replace(header, "<redacted>")
     return redacted
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    sub = parser.add_subparsers(dest="command", required=True)
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Build recon-ry auth arguments.")
+    parser.add_argument("--seed-file", default="")
+    parser.add_argument("--seed", default="")
+    parser.add_argument("--auth-host", default="")
+    parser.add_argument("--auth-header", action="append", default=[])
+    parser.add_argument("--cookie", action="append", default=[])
+    parser.add_argument("--format", choices=("shell-header-flags", "json"), default="shell-header-flags")
 
-    common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--seed", required=True, type=Path)
-
-    render = sub.add_parser("render", parents=[common])
+    subparsers = parser.add_subparsers(dest="command")
+    render = subparsers.add_parser("render")
+    render.add_argument("--seed", default="")
     render.add_argument("--tool", required=True)
+    render.add_argument("--auth-host", default="")
+    render.add_argument("--auth-header", action="append", default=[])
+    render.add_argument("--cookie", action="append", default=[])
     render.add_argument("--redacted", action="store_true")
 
-    meta = sub.add_parser("metadata", parents=[common])
+    meta = subparsers.add_parser("metadata")
+    meta.add_argument("--seed", required=True)
 
-    redact = sub.add_parser("redact", parents=[common])
+    redact = subparsers.add_parser("redact")
+    redact.add_argument("--seed", default="")
     redact.add_argument("--text", required=True)
+    redact.add_argument("--auth-host", default="")
+    redact.add_argument("--auth-header", action="append", default=[])
+    redact.add_argument("--cookie", action="append", default=[])
+    return parser
 
-    args = parser.parse_args()
-    seed_path = args.seed.expanduser()
-    if not seed_path.is_file():
-        return 0
-    seed = load_seed(seed_path)
 
+def main() -> int:
+    args = build_parser().parse_args()
     if args.command == "render":
-        print(render_args(seed, args.tool, redacted=args.redacted))
-    elif args.command == "metadata":
-        print(json.dumps(metadata(seed), indent=2, sort_keys=True))
-    elif args.command == "redact":
-        print(redact_text(seed, args.text))
+        print(
+            render_args(
+                tool=args.tool,
+                seed_file=args.seed,
+                auth_host=args.auth_host,
+                cli_headers=args.auth_header,
+                cli_cookies=args.cookie,
+                redacted=args.redacted,
+            )
+        )
+        return 0
+    if args.command == "metadata":
+        print(json.dumps(metadata(args.seed), indent=2, sort_keys=True))
+        return 0
+    if args.command == "redact":
+        print(
+            redact_text(
+                text=args.text,
+                seed_file=args.seed,
+                auth_host=args.auth_host,
+                cli_headers=args.auth_header,
+                cli_cookies=args.cookie,
+            )
+        )
+        return 0
+
+    headers = collect_headers(
+        seed_file=args.seed_file or args.seed,
+        auth_host=args.auth_host,
+        cli_headers=args.auth_header,
+        cli_cookies=args.cookie,
+    )
+    if args.format == "json":
+        print(json.dumps(headers))
+    else:
+        print(shell_header_flags(headers), end="")
     return 0
 
 

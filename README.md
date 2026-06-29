@@ -90,6 +90,9 @@ Run help:
 - `--project <dir>`
 - `--url <url-or-domain>`
 - `--timeout <secs>` (`0` disables timeout)
+- `--auth-seed <file>` (owner-only JSON auth seed for supported active HTTP tools)
+- `--auth-header <header>` (repeatable manual header for supported active HTTP tools)
+- `--cookie <value>` (repeatable manual cookie header value for supported active HTTP tools)
 - `--dry-run`
 - `-v`, `-vv`
 
@@ -97,6 +100,29 @@ Notes:
 - Either `--project` or `--url` must be provided.
 - `wild.txt` and `urls.txt` are treated as read-only inputs during recon runs.
 - In project mode, results and deltas are saved under date-based history directories.
+- Auth is opt-in. It is only applied to active HTTP-capable tools: katana, httpx, HTTP fingerprinting, param_recon's Katana path, ffuf, and nuclei.
+- Passive recon, DNS/IP enrichment, naabu, dorking, and local filesystem secret scanning stay unauthenticated.
+
+## Authenticated Recon
+
+Authenticated recon is designed for owned test-account lanes. Prefer passing an
+auth seed created by the wrapper/account-management flow:
+
+```bash
+./main.sh recon --url https://example.com --project ~/bounties/example --urls --auth-seed ~/bounties/example/.auth/recon-ry-auth.json
+```
+
+For one-off approved tests, headers and cookies can be passed manually:
+
+```bash
+./main.sh recon --url https://example.com --project ~/bounties/example --params \
+  --auth-header 'Authorization: Bearer REDACTED' \
+  --cookie 'sid=REDACTED'
+```
+
+When `RECON_RY_AUTH_HOST` is set, cookie entries from an auth seed are filtered
+to that host/domain before being handed to supported tools. Debug logging
+redacts `-H`, `--auth-header`, and `--cookie` values.
 
 ## Built-in Profiles
 

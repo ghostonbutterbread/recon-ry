@@ -23,11 +23,13 @@
 #   ./param_recon.sh -i alive.txt --active-only
 #   ./param_recon.sh -i alive.txt --stealth   # include scrapling (slower)
 #   ./param_recon.sh -i alive.txt --no-waymore --no-gospider
+#   ./param_recon.sh -i alive.txt --auth-seed ./auth.json
 
 if [ -z "$BASH_VERSION" ]; then
     echo "Error: requires bash. Run: bash $0"; exit 1
 fi
 set -o pipefail
+RECON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ─── Colors ───────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'; YELLOW='\033[0;33m'; RED='\033[0;31m'
@@ -49,7 +51,10 @@ USE_HAKRAWLER=0
 USE_GOSPIDER=0
 KATANA_DEPTH=5
 EXT_FILTER="png,jpg,jpeg,gif,svg,ico,woff,woff2,eot,ttf,otf,webp,mp4,mp3,pdf,zip,gz,tar,map,css"
+AUTH_SEED_FILE="${RECON_RY_AUTH_SEED:-}"
+AUTH_HOST="${RECON_RY_AUTH_HOST:-}"
 AUTH_HEADERS=()
+AUTH_COOKIES=()
 
 usage() {
     cat <<EOF
@@ -60,6 +65,10 @@ Usage: $0 [options]
   -o  <dir>     Output directory (default: current dir)
   -r  <num>     Rate limit in req/s — overrides rate_limit.conf (default: 5)
   -d  <depth>   Katana crawl depth (default: 5)
+  --auth-seed <file>  Owner-only JSON auth seed for supported active HTTP tools
+  --auth-host <host>  Host used to select matching cookies from the auth seed
+  --auth-header <h>   Header for supported active HTTP tools; repeatable
+  --cookie <value>    Cookie header value for supported active HTTP tools; repeatable
 
   --passive-only       Only run waybackurls + waymore
   --active-only        Only run katana + xnLinkFinder
@@ -73,7 +82,6 @@ Usage: $0 [options]
   --gospider           Enable gospider (disabled by default)
   --no-hakrawler       Skip hakrawler
   --no-gospider        Skip gospider
-  --auth-header <h>    Header for supported active HTTP tools, repeatable
 
 Output:
   params_raw.txt   Combined raw URLs from all sources (sorted-unique)
@@ -90,6 +98,10 @@ while [[ $# -gt 0 ]]; do
         -o) OUTDIR="$2"; shift 2 ;;
         -r) RATE_OVERRIDE="$2"; shift 2 ;;
         -d) KATANA_DEPTH="$2"; shift 2 ;;
+        --auth-seed) AUTH_SEED_FILE="$2"; shift 2 ;;
+        --auth-host) AUTH_HOST="$2"; shift 2 ;;
+        --auth-header) AUTH_HEADERS+=("$2"); shift 2 ;;
+        --cookie) AUTH_COOKIES+=("$2"); shift 2 ;;
         --passive-only) PASSIVE_ONLY=1; shift ;;
         --active-only) ACTIVE_ONLY=1; shift ;;
         --stealth) USE_STEALTH=1; shift ;;
@@ -101,7 +113,6 @@ while [[ $# -gt 0 ]]; do
         --no-hakrawler) USE_HAKRAWLER=0; shift ;;
         --gospider) USE_GOSPIDER=1; shift ;;
         --no-gospider) USE_GOSPIDER=0; shift ;;
-        --auth-header) AUTH_HEADERS+=("$2"); shift 2 ;;
         -h|--help) usage ;;
         *) echo "Unknown option: $1"; usage ;;
     esac
@@ -115,6 +126,25 @@ mkdir -p "$OUTDIR"
 
 RAW_OUT="$OUTDIR/params_raw.txt"
 DEDUP_OUT="$OUTDIR/params.txt"
+
+build_auth_args() {
+    local auth_cmd=(python3 "$RECON_DIR/scripts/auth_args.py" --format shell-header-flags)
+    if [[ -n "${AUTH_SEED_FILE:-}" ]]; then
+        auth_cmd+=(--seed-file "$AUTH_SEED_FILE")
+    fi
+    if [[ -n "${AUTH_HOST:-}" ]]; then
+        auth_cmd+=(--auth-host "$AUTH_HOST")
+    fi
+    local header
+    for header in "${AUTH_HEADERS[@]}"; do
+        auth_cmd+=(--auth-header "$header")
+    done
+    local cookie
+    for cookie in "${AUTH_COOKIES[@]}"; do
+        auth_cmd+=(--cookie "$cookie")
+    done
+    "${auth_cmd[@]}"
+}
 
 # ─── Rate limit ───────────────────────────────────────────────────────────────
 # Priority: -r flag > rate_limit.conf (katana entry) > rate_limit.conf (default) > 5
@@ -239,9 +269,6 @@ echo ""
 echo -e "  ${DIM}Input:${NC}       $INPUT  ($URL_COUNT URLs, $DOMAIN_COUNT domains)"
 echo -e "  ${DIM}Output:${NC}      $OUTDIR"
 echo -e "  ${DIM}Rate limit:${NC}  $RATE req/s$([ -n "$RATE_OVERRIDE" ] && echo " (from -r flag)" || echo " (from rate_limit.conf)")"
-if [[ ${#AUTH_HEADERS[@]} -gt 0 ]]; then
-    echo -e "  ${DIM}Auth:${NC}        enabled for supported active HTTP tools (${#AUTH_HEADERS[@]} headers)"
-fi
 echo ""
 echo -e "  ${CYAN}Passive:${NC}"
 echo -e "    waybackurls  $([ $USE_WAYBACKURLS -eq 1 ] && echo -e "${GREEN}✓${NC}" || echo -e "${DIM}skip${NC}")"
@@ -344,18 +371,9 @@ fi
 # ─── ACTIVE: katana ───────────────────────────────────────────────────────────
 phase "katana (active crawler + JS parsing)"
 if [[ $USE_KATANA -eq 1 ]] && command -v katana &>/dev/null; then
-    KATANA_AUTH_ARGS=()
-    for header in "${AUTH_HEADERS[@]}"; do
-        KATANA_AUTH_ARGS+=("-H" "$header")
-    done
-    cat "$INPUT" | katana \
-        -silent \
-        -jc \
-        -d "$KATANA_DEPTH" \
-        -rl "$RATE" \
-        -ef "$EXT_FILTER" \
-        "${KATANA_AUTH_ARGS[@]}" \
-        2>/dev/null > "$KATANA_TMP"
+    AUTH_ARGS=$(build_auth_args)
+    eval "katana -silent -jc -d \"\$KATANA_DEPTH\" -rl \"\$RATE\" -ef \"\$EXT_FILTER\" $AUTH_ARGS" \
+        < "$INPUT" 2>/dev/null > "$KATANA_TMP"
     result "$(wc -l < "$KATANA_TMP" | tr -d ' ')" "katana"
 elif [[ $USE_KATANA -eq 1 ]]; then
     echo -e "          ${YELLOW}warning:${NC} katana not found"; echo ""
