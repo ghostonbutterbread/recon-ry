@@ -132,14 +132,24 @@ check_tool_exists() {
         script)
             # Check if script file exists at specified path
             local binary_path=$(get_install_info "$tool" "binary_path")
-            if [[ -n "$binary_path" ]]; then
+            if [[ "$tool" == "eyewitness" ]]; then
+                local configured_eyewitness_path
+                configured_eyewitness_path=$(get_tool_info "$tool" "eyewitness_path")
+                configured_eyewitness_path="${configured_eyewitness_path//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
+                configured_eyewitness_path="${configured_eyewitness_path/#\~/$HOME}"
+                if [[ -n "$configured_eyewitness_path" && -f "$configured_eyewitness_path" ]]; then
+                    base_available=true
+                fi
+            fi
+
+            if [[ "$base_available" != "true" && -n "$binary_path" ]]; then
                 binary_path="${binary_path/#\~/$HOME}"
                 # Resolve relative paths against SCRIPT_DIR (bundled scripts)
                 if [[ "$binary_path" != /* ]]; then
                     binary_path="$SCRIPT_DIR/$binary_path"
                 fi
                 [[ -f "$binary_path" ]] && base_available=true
-            else
+            elif [[ "$base_available" != "true" ]]; then
                 # Fallback to binary name check
                 local binary_name=$(get_install_info "$tool" "binary_name")
                 command -v "$binary_name" &> /dev/null && base_available=true
