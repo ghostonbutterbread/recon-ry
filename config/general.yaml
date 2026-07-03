@@ -244,7 +244,7 @@ tools:
     type: script
     command: "python3 {{RECON_DIR}}/scripts/incremental_eyewitness.py --input {{INPUT}} --output {{OUTPUT}} --eyewitness {{EYEWITNESS_PATH}} --python {{EYEWITNESS_PYTHON}} --chunk-size {{EYEWITNESS_CHUNK_SIZE}} --threads {{EYEWITNESS_THREADS}} --timeout {{EYEWITNESS_TIMEOUT}} --max-retries {{EYEWITNESS_MAX_RETRIES}} --continue-on-fail"
     eyewitness_path: "{{RECON_DIR}}/tools/EyeWitness/Python/EyeWitness.py"
-    eyewitness_python: "python3"
+    eyewitness_python: "{{RECON_DIR}}/tools/EyeWitness/eyewitness-venv/bin/python"
     store_dir: "{{PROJECT_DIR}}/eyewitness"
     chunk_size: 4000
     threads: 1
