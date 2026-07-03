@@ -179,6 +179,15 @@ execute_stage() {
                 EYE_DATE_STAMP="$(date +"%-m-%-d-%Y")"
             fi
             local eye_root="$project_dir/eyewitness"
+            local eye_store
+            eye_store="$(get_tool_info "$tool" "store_dir")"
+            if [[ -z "$eye_store" ]]; then
+                eye_store="$eye_root"
+            fi
+            eye_store="${eye_store//\{\{PROJECT_DIR\}\}/$project_dir}"
+            eye_store="${eye_store//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
+            eye_store="${eye_store//\{\{DOMAIN\}\}/$domain}"
+            eye_store="${eye_store//\{\{URL\}\}/$url}"
             local eye_history_run_dir="$eye_root/history/$EYE_DATE_STAMP"
             local eye_had_existing_content=false
             if dir_has_contents "$eye_root"; then
@@ -193,7 +202,7 @@ execute_stage() {
                     input_file="$temp_dir/eyewitness_input.txt"
                     printf '%s\n' "$EYE_INPUT" > "$input_file"
                 fi
-                output_file="$eye_history_run_dir/custom_input"
+                output_file="$eye_store"
                 tool_params+=("$tool:$input_file:$output_file:$domain:$url")
                 continue
             fi
@@ -235,11 +244,11 @@ execute_stage() {
             fi
 
             if [[ -n "$params_input" ]]; then
-                tool_params+=("$tool:$params_input:$eye_history_run_dir/params:$domain:$url")
+                tool_params+=("$tool:$params_input:$eye_store:$domain:$url")
             fi
 
             if [[ -n "$alive_input" ]]; then
-                tool_params+=("$tool:$alive_input:$eye_history_run_dir/alive:$domain:$url")
+                tool_params+=("$tool:$alive_input:$eye_store:$domain:$url")
             fi
 
             if [[ -z "$params_input" && -z "$alive_input" ]]; then

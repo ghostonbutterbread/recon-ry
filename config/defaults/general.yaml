@@ -242,10 +242,17 @@ tools:
   # Visual Recon
   eyewitness:
     type: script
-    command: "mkdir -p {{OUTPUT}} && {{VENV_PYTHON}} {{RECON_DIR}}/tools/EyeWitness/Python/EyeWitness.py -f {{INPUT}} -d {{OUTPUT}}"
+    command: "python3 {{RECON_DIR}}/scripts/incremental_eyewitness.py --input {{INPUT}} --output {{OUTPUT}} --eyewitness {{EYEWITNESS_PATH}} --python {{EYEWITNESS_PYTHON}} --chunk-size {{EYEWITNESS_CHUNK_SIZE}} --threads {{EYEWITNESS_THREADS}} --timeout {{EYEWITNESS_TIMEOUT}} --max-retries {{EYEWITNESS_MAX_RETRIES}} --continue-on-fail"
+    eyewitness_path: "{{RECON_DIR}}/tools/EyeWitness/Python/EyeWitness.py"
+    eyewitness_python: "python3"
+    store_dir: "{{PROJECT_DIR}}/eyewitness"
+    chunk_size: 4000
+    threads: 1
+    eyewitness_timeout: 10
+    max_retries: 1
     required_files: [alive.txt]
-    outputs: [eyewitness/alive/report.html, eyewitness/params/report.html]
-    note: "Requires Chromium/ChromeDriver; run EyeWitness setup if missing"
+    outputs: [eyewitness/final/requests.jsonl]
+    note: "Uses incremental EyeWitness wrapper; requires Chromium/ChromeDriver and EyeWitness setup"
 
   # Parameter Discovery
   param_recon:

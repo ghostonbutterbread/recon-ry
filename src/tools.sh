@@ -209,6 +209,42 @@ execute_tool() {
     if [[ -z "$top_ports" ]]; then
         top_ports="1000"
     fi
+    local eyewitness_chunk_size
+    eyewitness_chunk_size=$(get_tool_info "$tool" "chunk_size")
+    if [[ -z "$eyewitness_chunk_size" ]]; then
+        eyewitness_chunk_size="4000"
+    fi
+    local eyewitness_threads
+    eyewitness_threads=$(get_tool_info "$tool" "threads")
+    if [[ -z "$eyewitness_threads" ]]; then
+        eyewitness_threads="1"
+    fi
+    local eyewitness_timeout
+    eyewitness_timeout=$(get_tool_info "$tool" "eyewitness_timeout")
+    if [[ -z "$eyewitness_timeout" ]]; then
+        eyewitness_timeout="10"
+    fi
+    local eyewitness_max_retries
+    eyewitness_max_retries=$(get_tool_info "$tool" "max_retries")
+    if [[ -z "$eyewitness_max_retries" ]]; then
+        eyewitness_max_retries="1"
+    fi
+    local eyewitness_path
+    eyewitness_path=$(get_tool_info "$tool" "eyewitness_path")
+    if [[ -z "$eyewitness_path" ]]; then
+        eyewitness_path="{{RECON_DIR}}/tools/EyeWitness/Python/EyeWitness.py"
+    fi
+    eyewitness_path="${eyewitness_path//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
+    eyewitness_path="${eyewitness_path//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
+    eyewitness_path="${eyewitness_path//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
+    local eyewitness_python
+    eyewitness_python=$(get_tool_info "$tool" "eyewitness_python")
+    if [[ -z "$eyewitness_python" ]]; then
+        eyewitness_python="python3"
+    fi
+    eyewitness_python="${eyewitness_python//\{\{PROJECT_DIR\}\}/$PROJECT_DIR}"
+    eyewitness_python="${eyewitness_python//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
+    eyewitness_python="${eyewitness_python//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
 
     # Replace placeholders
     command="${command//\{\{INPUT\}\}/$input_file}"
@@ -219,6 +255,12 @@ execute_tool() {
     command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
     command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
     command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
+    command="${command//\{\{EYEWITNESS_CHUNK_SIZE\}\}/$eyewitness_chunk_size}"
+    command="${command//\{\{EYEWITNESS_THREADS\}\}/$eyewitness_threads}"
+    command="${command//\{\{EYEWITNESS_TIMEOUT\}\}/$eyewitness_timeout}"
+    command="${command//\{\{EYEWITNESS_MAX_RETRIES\}\}/$eyewitness_max_retries}"
+    command="${command//\{\{EYEWITNESS_PATH\}\}/$eyewitness_path}"
+    command="${command//\{\{EYEWITNESS_PYTHON\}\}/$eyewitness_python}"
     command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
     # Per-tool directories and virtualenvs
     local venv_enabled
@@ -227,6 +269,11 @@ execute_tool() {
     venv_path=$(get_install_info "$tool" "venv_path")
     local venv_activate
     venv_activate=$(get_install_info "$tool" "venv_activate" | tr '[:upper:]' '[:lower:]')
+    if [[ "$tool" == "eyewitness" ]]; then
+        venv_enabled=false
+        venv_activate=false
+        venv_path=""
+    fi
 
     if [[ "$venv_enabled" == "true" && -z "$venv_path" ]]; then
         venv_path="venvs/$tool"
@@ -260,6 +307,12 @@ execute_tool() {
         command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
         command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
         command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
+        command="${command//\{\{EYEWITNESS_CHUNK_SIZE\}\}/$eyewitness_chunk_size}"
+        command="${command//\{\{EYEWITNESS_THREADS\}\}/$eyewitness_threads}"
+        command="${command//\{\{EYEWITNESS_TIMEOUT\}\}/$eyewitness_timeout}"
+        command="${command//\{\{EYEWITNESS_MAX_RETRIES\}\}/$eyewitness_max_retries}"
+        command="${command//\{\{EYEWITNESS_PATH\}\}/$eyewitness_path}"
+        command="${command//\{\{EYEWITNESS_PYTHON\}\}/$eyewitness_python}"
         command="${command//\{\{SECRETFINDER_DIR\}\}/${SECRETFINDER_DIR:-$SCRIPT_DIR/tools/SecretFinder}}"
         if [[ -n "$venv_path" ]]; then
             command="${command//\{\{VENV_PYTHON\}\}/$venv_path/bin/python}"
@@ -294,6 +347,9 @@ execute_tool() {
         effective_timeout=$(get_default_timeout)
     else
         effective_timeout=${TOOL_TIMEOUT:-}
+    fi
+    if [[ "$tool" == "eyewitness" ]]; then
+        effective_timeout=0
     fi
 
     # Execute command, wrapped with timeout when applicable

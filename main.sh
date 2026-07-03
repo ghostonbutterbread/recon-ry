@@ -33,6 +33,7 @@ AUTH_SEED_FILE="${RECON_RY_AUTH_SEED:-}"
 AUTH_HOST="${RECON_RY_AUTH_HOST:-}"
 declare -a AUTH_HEADERS=()
 declare -a AUTH_COOKIES=()
+declare -a EYE_CHUNKS_ARGS=()
 
 handle_interrupt() {
     INTERRUPTED=true
@@ -50,6 +51,7 @@ Commands:
     recon               Run reconnaissance based on profile
     scans               List or stop background scans
     secrets             Run secret scanning operations
+    eye_chunks          Run EyeWitness in chunks and merge reports
     enable_tools        Interactive TUI to enable/disable tools
     set_stages          Interactive TUI to configure stages
     selftest            Run lightweight self-test (no external tools)
@@ -66,6 +68,11 @@ Examples:
     $(basename "$0") enable_tools
     $(basename "$0") selftest
 EOF
+}
+
+# Incremental EyeWitness command help
+show_eye_chunks_help() {
+    "$SCRIPT_DIR/scripts/incremental_eyewitness.py" --help
 }
 
 # Init command help
@@ -406,6 +413,9 @@ show_command_help() {
         scans)
             show_scans_help
             ;;
+        eye_chunks)
+            show_eye_chunks_help
+            ;;
         selftest)
             show_selftest_help
             ;;
@@ -433,7 +443,7 @@ parse_args() {
 
     # Check if command is valid
     case "$COMMAND" in
-        init|recon|secrets|enable_tools|set_stages|update|check|scans|selftest)
+        init|recon|secrets|eye_chunks|enable_tools|set_stages|update|check|scans|selftest)
             # Valid command, continue parsing
             ;;
         *)
@@ -442,6 +452,11 @@ parse_args() {
             exit 1
             ;;
     esac
+
+    if [[ "$COMMAND" == "eye_chunks" ]]; then
+        EYE_CHUNKS_ARGS=("$@")
+        return
+    fi
 
     # Parse command-specific options
     while [[ $# -gt 0 ]]; do
@@ -625,6 +640,9 @@ main() {
             else
                 list_bg_scans "$PROJECT_DIR"
             fi
+            ;;
+        eye_chunks)
+            "$SCRIPT_DIR/scripts/incremental_eyewitness.py" "${EYE_CHUNKS_ARGS[@]}"
             ;;
         selftest)
             "$SCRIPT_DIR/scripts/self_test.sh"

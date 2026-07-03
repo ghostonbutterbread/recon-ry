@@ -67,6 +67,7 @@ ls -la ~/bounties/example/history
 - `init` - initialize a project directory and generate `rate_limit.conf`
 - `recon` - run reconnaissance profiles/stages
 - `secrets` - run secret-scanning workflow
+- `eye_chunks` - run EyeWitness in recoverable chunks and merge one report
 - `scans` - list/kill background scans (currently used for `dir_enum` background jobs)
 - `enable_tools` - interactive tool toggle menu
 - `set_stages` - interactive stage toggle/parallel menu
@@ -200,11 +201,67 @@ Rate/timeout precedence at runtime:
 
 - `recon --eye` (or profile `eye`) runs EyeWitness only.
 - `--eye [url|file]` accepts either a single URL string or a file path.
-- Output goes to `eyewitness/history/<date>/custom_input` for custom input, and to `.../alive` / `.../params` for list-based inputs.
+- Output goes through the incremental EyeWitness wrapper by default.
+- The default durable store is `eyewitness/`, configurable with the `tools.eyewitness.store_dir` value in `config/general.yaml`.
+- The central report and URL lookup manifest are written to `eyewitness/final/report.html` and `eyewitness/final/requests.jsonl`.
 
 `--full` + EyeWitness input selection:
 - If `eyewitness/` does not exist or is empty, EyeWitness uses normal run/project `alive.txt` and `params.txt` inputs.
 - If `eyewitness/` already has content, EyeWitness uses current run delta files from `history/<date>/alive.txt` and `history/<date>/params.txt`.
+
+## Incremental EyeWitness Reports
+
+Use `eye_chunks` for large screenshot/source farming runs where one native
+EyeWitness process would be too fragile:
+
+```bash
+./main.sh eye_chunks \
+  --input ~/bounties/example/alive.txt \
+  --output ~/bounties/example/eyewitness \
+  --chunk-size 4000 \
+  --threads 1 \
+  --timeout 10
+```
+
+The wrapper:
+
+- treats `--output` as a durable EyeWitness store
+- skips URLs already present in the store unless `--fresh` is used
+- splits the input file into stable chunk files
+- runs native EyeWitness once per chunk in an isolated per-run work directory
+- keeps EyeWitness SQLite DBs under a local cache via `--db-root` so mounted output directories do not hit SQLite lock failures
+- records chunk state under `runs/<run_id>/state/chunks.json`
+- moves completed screenshots/source files into `final/screens/` and `final/source/`
+- writes merged metadata to `final/requests.jsonl`
+- writes the current run report to `runs/<run_id>/final/report.html`
+- regenerates the central EyeWitness-style merged report at `final/report.html`
+- optionally renders `final/report.pdf` with `--pdf` when Playwright is installed
+- deletes successful chunk work directories after merge unless `--keep-work` is used
+
+The same wrapper is also used by `recon --eye`; tune these defaults under
+`tools.eyewitness` in `config/general.yaml`:
+
+- `store_dir`
+- `eyewitness_path`
+- `eyewitness_python`
+- `chunk_size`
+- `threads`
+- `eyewitness_timeout`
+- `max_retries`
+
+If a chunk fails, rerun only that chunk:
+
+```bash
+./main.sh eye_chunks \
+  --input ~/bounties/example/alive.txt \
+  --output ~/bounties/example/eyewitness \
+  --resume \
+  --only-chunk chunk_0007 \
+  --force
+```
+
+For Hoster-sized runs, run this command inside `tmux` or `systemd-run --user`
+on Hoster so OpenClaw restarts cannot terminate the capture process.
 
 ## Directory Enumeration Output
 
@@ -304,6 +361,9 @@ Missing config files are restored from `config/defaults/` when possible.
 
 # EyeWitness with file input
 ./main.sh recon --project ~/bounties/example --eye ~/targets/alive.txt
+
+# Incremental EyeWitness report for a large URL list
+./main.sh eye_chunks --input ~/targets/alive.txt --output ~/bounties/example/eyewitness --chunk-size 4000
 
 # Secrets workflow
 ./main.sh secrets --secrets --project ~/bounties/example

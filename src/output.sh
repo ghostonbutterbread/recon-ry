@@ -86,6 +86,7 @@ copy_outputs_to_history() {
         local tmp="$dest.tmp"
 
         if [[ -f "$src" && -s "$src" ]]; then
+            mkdir -p "$(dirname "$dest")"
             # If baseline is missing, fallback to full copy
             if [[ ! -f "$base" ]]; then
                 merge_with_anew "$src" "$dest"

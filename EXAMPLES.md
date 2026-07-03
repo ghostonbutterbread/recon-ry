@@ -78,13 +78,54 @@ File input:
 ```
 
 Outputs:
-- `eyewitness/history/<m-d-YYYY>/alive`
-- `eyewitness/history/<m-d-YYYY>/params`
-- `eyewitness/history/<m-d-YYYY>/custom_input`
+- `eyewitness/final/report.html`
+- `eyewitness/final/requests.jsonl`
+- `eyewitness/final/screens/`
+- `eyewitness/final/source/`
+- `eyewitness/runs/<run_id>/final/report.html`
 
 `--full` behavior:
 - Empty/missing `eyewitness/`: scans standard alive/params inputs.
 - Existing `eyewitness/` content: scans current run history deltas (`history/<date>/alive.txt` and `history/<date>/params.txt`).
+
+The EyeWitness store path and wrapper settings live under `tools.eyewitness`
+in `config/general.yaml`.
+
+Incremental EyeWitness for large URL sets:
+
+```bash
+./main.sh eye_chunks \
+  --input ~/bounties/example/alive.txt \
+  --output ~/bounties/example/eyewitness \
+  --chunk-size 4000 \
+  --threads 1 \
+  --timeout 10
+```
+
+Resume or rerun one failed chunk:
+
+```bash
+./main.sh eye_chunks \
+  --input ~/bounties/example/alive.txt \
+  --output ~/bounties/example/eyewitness \
+  --resume \
+  --only-chunk chunk_0007 \
+  --force
+```
+
+The durable store keeps central outputs under `final/` and per-run outputs under
+`runs/<run_id>/final/`:
+
+```text
+final/screens/
+final/source/
+final/requests.jsonl
+final/report.html
+final/report.pdf   # only when --pdf succeeds
+runs/<run_id>/state/chunks.json
+runs/<run_id>/final/requests.jsonl
+runs/<run_id>/final/report.html
+```
 
 ## 6) Directory Enumeration and Status Buckets
 
