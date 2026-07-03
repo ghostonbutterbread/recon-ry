@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "projectId": "prj_https-github-com-ryushe-recon-ry_cc7c1dcf01",
+  "name": "recon-ry",
+  "rootPath": "/home/ryushe/tools/recon-ry",
+  "git": {
+    "remoteUrl": "https://github.com/ryushe/recon-ry",
+    "defaultBranch": "main",
+    "currentBranch": "main",
+    "headSha": "e9c3e3d46701177b8f4532a5762ab7abfca70285"
+  },
+  "detected": {
+    "languages": [
+      "python"
+    ],
+    "frameworks": [],
+    "packageManagers": [
+      "python"
+    ],
+    "commands": {
+      "typecheck": null,
+      "lint": null,
+      "format": null,
+      "test": null
+    }
+  },
+  "createdAt": "2026-07-03T06:23:24.076Z",
+  "updatedAt": "2026-07-03T06:23:24.076Z"
+}
