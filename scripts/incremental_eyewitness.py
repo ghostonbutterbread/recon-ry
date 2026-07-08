@@ -13,13 +13,16 @@ import hashlib
 import html
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import unquote, urlparse
 
 
 CATEGORIES: list[tuple[str | None, str, str]] = [
@@ -55,6 +58,10 @@ CATEGORIES: list[tuple[str | None, str, str]] = [
     ("badgw", "Bad Gateway", "badgw"),
     ("serviceunavailable", "Service Unavailable", "serviceunavailable"),
 ]
+
+MAX_ARTIFACT_FILENAME_BYTES = 240
+INTERESTING_PRESET_FILTERS = ("errors", "no-image", "api", "json", "javascript", "unauth")
+FLOURISH_DESIGN_PATH_RE = re.compile(r"^/†\d+/?$")
 
 
 @dataclass
@@ -273,17 +280,39 @@ def write_manifest(path: Path, records: Iterable[dict[str, Any]]) -> None:
             handle.write(json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n")
 
 
+def shorten_filename(name: str, max_bytes: int = MAX_ARTIFACT_FILENAME_BYTES) -> str:
+    """Keep EyeWitness URL-derived artifact names below filesystem limits."""
+    if len(name.encode("utf-8")) <= max_bytes:
+        return name
+
+    digest = hashlib.sha1(name.encode("utf-8")).hexdigest()[:12]
+    stem, ext = os.path.splitext(name)
+    suffix = f"__{digest}{ext}"
+    suffix_bytes = len(suffix.encode("utf-8"))
+    if suffix_bytes >= max_bytes:
+        suffix = f"__{digest}"
+        suffix_bytes = len(suffix.encode("utf-8"))
+
+    target_stem_bytes = max(1, max_bytes - suffix_bytes)
+    while len(stem.encode("utf-8")) > target_stem_bytes:
+        stem = stem[:-1]
+    return f"{stem}{suffix}"
+
+
 def copy_artifact(src: str | None, final_dir: Path, subdir: str, chunk_id: str, base_dir: Path) -> str | None:
     if not src:
         return None
     src_path = Path(src)
     if not src_path.is_absolute():
         src_path = base_dir / src_path
-    if not src_path.exists() or not src_path.is_file():
+    try:
+        if not src_path.exists() or not src_path.is_file():
+            return None
+    except OSError:
         return None
     target_dir = final_dir / subdir
     target_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = f"{chunk_id}__{src_path.name}"
+    safe_name = shorten_filename(f"{chunk_id}__{src_path.name}")
     dest = target_dir / safe_name
     shutil.copy2(src_path, dest)
     return str(dest.relative_to(final_dir))
@@ -393,8 +422,12 @@ def merge_chunk(chunk: Chunk, store_dir: Path, run_dir: Path, run_id: str, eyewi
 
 
 def run_chunk(chunk: Chunk, args: argparse.Namespace, store_dir: Path, run_dir: Path, state_path: Path, state: RunState) -> bool:
-    work_dir = Path(chunk.work_dir)
+    configured_work_dir = Path(chunk.work_dir)
+    work_root = Path(args.db_root).expanduser() / store_key(store_dir) / state.run_id / chunk.id
+    work_dir = work_root / "work"
+    shutil.rmtree(work_dir, ignore_errors=True)
     work_dir.mkdir(parents=True, exist_ok=True)
+    chunk.work_dir = str(work_dir)
     log_dir = run_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     chunk.log = str(log_dir / f"{chunk.id}.eyewitness.log")
@@ -426,19 +459,11 @@ def run_chunk(chunk: Chunk, args: argparse.Namespace, store_dir: Path, run_dir: 
     ]
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    db_dir = Path(args.db_root).expanduser() / store_key(store_dir) / state.run_id / chunk.id
-    shutil.rmtree(db_dir, ignore_errors=True)
-    db_dir.mkdir(parents=True, exist_ok=True)
-    env["EYEWITNESS_DB_DIR"] = str(db_dir)
     with Path(chunk.log).open("w", encoding="utf-8") as log:
         log.write("$ " + " ".join(command) + "\n")
-        log.write(f"EYEWITNESS_DB_DIR={db_dir}\n")
+        log.write(f"LOCAL_WORK_DIR={work_dir}\n")
         log.flush()
         result = subprocess.run(command, cwd=str(Path(args.eyewitness).parent), env=env, stdout=log, stderr=subprocess.STDOUT)
-
-    db_path = db_dir / "ew.db"
-    if db_path.exists():
-        shutil.copy2(db_path, work_dir / "ew.db")
 
     chunk.exit_code = result.returncode
     chunk.finished_at = now()
@@ -448,6 +473,7 @@ def run_chunk(chunk: Chunk, args: argparse.Namespace, store_dir: Path, run_dir: 
         chunk.error = None if count else "chunk completed but produced no completed records"
         if not args.keep_work:
             shutil.rmtree(work_dir, ignore_errors=True)
+            chunk.work_dir = str(configured_work_dir)
         save_state(state_path, state)
         return True
 
@@ -464,7 +490,268 @@ def html_link(href: str | None, label: str, asset_prefix: str = "") -> str:
     return f'<a href="{html.escape(target, quote=True)}" target="_blank">{html.escape(label)}</a>'
 
 
-def render_record(record: dict[str, Any], asset_prefix: str = "") -> str:
+def record_header(record: dict[str, Any], header_name: str) -> str:
+    headers = record.get("headers") or {}
+    if not isinstance(headers, dict):
+        return ""
+    for key, value in headers.items():
+        if str(key).lower() == header_name.lower():
+            return str(value)
+    return ""
+
+
+def record_content_type(record: dict[str, Any]) -> str:
+    return record_header(record, "content-type").split(";", 1)[0].strip().lower()
+
+
+def record_content_length(record: dict[str, Any]) -> str:
+    return record_header(record, "content-length").strip()
+
+
+def record_status_bucket(record: dict[str, Any]) -> str:
+    category = str(record.get("category") or "").lower()
+    error = str(record.get("error") or "").lower()
+    if category == "notfound":
+        return "404"
+    if category == "unauth":
+        return "401-403"
+    if category == "badreq":
+        return "400"
+    if category == "badgw":
+        return "502"
+    if category == "serviceunavailable":
+        return "503"
+    if category == "inerror":
+        return "500"
+    if error:
+        return token_slug(error)
+    return "success"
+
+
+def token_slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
+    return slug or "unknown"
+
+
+def record_response_key(record: dict[str, Any]) -> str:
+    parts = [
+        f"type_{record_content_type(record) or 'unknown'}",
+        f"len_{record_content_length(record) or 'unknown'}",
+        f"status_{record_status_bucket(record)}",
+        f"title_{record.get('title') or 'unknown'}",
+        f"category_{record.get('category') or 'uncategorized'}",
+        f"error_{record.get('error') or 'none'}",
+    ]
+    return token_slug("__".join(parts))
+
+
+def record_source_path(record: dict[str, Any], source_base: Path | None) -> Path | None:
+    source = record.get("source")
+    if not source or source_base is None:
+        return None
+    source_path = Path(str(source))
+    if source_path.is_absolute():
+        return source_path
+    return source_base / source_path
+
+
+def normalized_source_body(record: dict[str, Any], source_base: Path | None) -> str:
+    source_path = record_source_path(record, source_base)
+    if not source_path:
+        return ""
+    try:
+        text = source_path.read_text(encoding="utf-8", errors="replace")[:250_000]
+    except OSError:
+        return ""
+    text = html.unescape(text)
+    text = re.sub(r"<script\b[^>]*>.*?</script>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<style\b[^>]*>.*?</style>", " ", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = text.lower()
+    text = re.sub(r"https?://\S+", " {url} ", text)
+    text = re.sub(r"\b[0-9a-f]{16,}\b", " {hex} ", text)
+    text = re.sub(r"\b[a-z0-9_-]{24,}\b", " {token} ", text)
+    text = re.sub(r"\d+", "{n}", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def record_body_key(record: dict[str, Any], source_base: Path | None) -> str:
+    body = normalized_source_body(record, source_base)
+    if not body:
+        return record_response_key(record)
+    digest = hashlib.sha1(body.encode("utf-8")).hexdigest()[:16]
+    return f"body_{digest}"
+
+
+def generalized_url_regex_token(record: dict[str, Any]) -> str:
+    raw_url = record.get("url") or ""
+    if not raw_url:
+        return ""
+    parsed = urlparse(raw_url)
+    path = re.sub(r"\d+", r"\\d+", re.escape(parsed.path or "/"))
+    base = f"{re.escape(parsed.scheme)}://{re.escape(parsed.netloc)}{path}"
+    if parsed.query:
+        query_parts: list[str] = []
+        for part in parsed.query.split("&"):
+            if "=" in part:
+                name, _value = part.split("=", 1)
+                query_parts.append(f"{re.escape(name)}=[^&]*")
+            else:
+                query_parts.append(f"{re.escape(part)}(?:=[^&]*)?")
+        base += r"\?" + "&".join(query_parts)
+    if parsed.fragment:
+        base += r"\#" + re.escape(parsed.fragment)
+    return f"url:reg:^{base}$"
+
+
+def generalized_url_family(record: dict[str, Any]) -> str:
+    raw_url = record.get("url") or ""
+    if not raw_url:
+        return "unknown"
+    parsed = urlparse(raw_url.lower())
+    path = re.sub(r"\d+", "{n}", parsed.path or "/")
+    family = f"{parsed.scheme}://{parsed.netloc}{path}"
+    if parsed.query:
+        names = []
+        for part in parsed.query.split("&"):
+            name = part.split("=", 1)[0]
+            names.append(name)
+        family += "?" + "&".join(f"{name}=*" for name in names)
+    return family
+
+
+def record_url_response_key(record: dict[str, Any]) -> str:
+    parts = [
+        f"url_{generalized_url_family(record)}",
+        f"len_{record_content_length(record) or 'unknown'}",
+        f"type_{record_content_type(record) or 'unknown'}",
+        f"status_{record_status_bucket(record)}",
+    ]
+    return token_slug("__".join(parts))
+
+
+def same_response_filter_token(record: dict[str, Any], source_base: Path | None = None) -> str:
+    parsed = urlparse(record.get("url") or "")
+    parts: list[str] = []
+    content_type = record_content_type(record)
+    body_key = record_body_key(record, source_base)
+    if parsed.hostname:
+        parts.append(f"host:{parsed.hostname.lower()}")
+    if content_type:
+        parts.append(f"content-type:{content_type}")
+    if body_key:
+        parts.append(f"response-body:{body_key}")
+    parts.append(f"status:{record_status_bucket(record)}")
+    return " && ".join(parts)
+
+
+def record_extension(record: dict[str, Any]) -> str:
+    parsed = urlparse(record.get("url") or "")
+    name = unquote(Path(parsed.path).name).lower().strip()
+    if "." not in name:
+        return ""
+    ext = "." + name.rsplit(".", 1)[-1]
+    if not (2 <= len(ext) <= 12) or any(char.isspace() for char in ext):
+        return ""
+    return ext
+
+
+def record_type(record: dict[str, Any]) -> str:
+    ext = record_extension(record)
+    content_type = record_content_type(record)
+    if ext in {".js", ".mjs", ".cjs"} or "javascript" in content_type:
+        return "javascript"
+    if ext == ".css" or content_type == "text/css":
+        return "css"
+    if ext == ".json" or content_type in {"application/json", "text/json"} or content_type.endswith("+json"):
+        return "json"
+    if ext == ".svg" or content_type == "image/svg+xml":
+        return "svg"
+    if ext in {".png", ".jpg", ".jpeg", ".gif", ".webp", ".avif", ".ico", ".bmp", ".tif", ".tiff"} or content_type.startswith("image/"):
+        return "image"
+    if ext in {".woff", ".woff2", ".ttf", ".otf", ".eot"} or content_type.startswith("font/"):
+        return "font"
+    if ext in {".mp4", ".webm", ".mov", ".m4v", ".avi", ".mkv"} or content_type.startswith("video/"):
+        return "video"
+    if ext in {".mp3", ".ogg", ".wav", ".m4a", ".flac"} or content_type.startswith("audio/"):
+        return "audio"
+    if ext == ".pdf" or content_type == "application/pdf":
+        return "pdf"
+    if ext in {".txt", ".csv", ".xml", ".html", ".htm"} or content_type in {"text/plain", "text/csv", "text/xml", "application/xml", "text/html"}:
+        return "document"
+    if ext:
+        return "other-file"
+    return "page"
+
+
+def record_labels(record: dict[str, Any]) -> list[str]:
+    labels: list[str] = []
+    category = record.get("category") or "uncategorized"
+    labels.append(str(category))
+    parsed = urlparse(record.get("url") or "")
+    if category == "notfound":
+        labels.append("404")
+    if category == "unauth":
+        labels.extend(("401", "403"))
+    rtype = record_type(record)
+    labels.append(rtype)
+    ext = record_extension(record)
+    if ext:
+        labels.append(ext.lstrip("."))
+    content_type = record_content_type(record)
+    if content_type:
+        labels.extend(part for part in content_type.replace("+", "/").split("/") if part)
+    content_length = record_content_length(record)
+    if content_length:
+        labels.append(f"length-{content_length}")
+    labels.append(f"status-{record_status_bucket(record)}")
+    if not record.get("screenshot"):
+        labels.append("no-image")
+    if record.get("error"):
+        labels.append("error")
+        if record.get("category") != "notfound":
+            labels.append("errors")
+    if "api" in (record.get("url") or "").lower():
+        labels.append("api")
+    if "†" in (record.get("url") or ""):
+        labels.append("dagger-url")
+    if parsed.hostname == "app.flourish.studio" and FLOURISH_DESIGN_PATH_RE.match(unquote(parsed.path)):
+        labels.append("design-url")
+    labels.append("response")
+    labels.append(f"response-{record_response_key(record)}")
+    interesting_labels = {"unauth", "errors", "no-image", "api", "json", "javascript"}
+    if any(label in labels for label in interesting_labels):
+        labels.append("interesting")
+    return sorted(set(label for label in labels if label))
+
+
+def report_section(record: dict[str, Any]) -> tuple[str, str]:
+    if record.get("error"):
+        return ("Errors", "errors")
+    category = record.get("category")
+    if category:
+        for known_category, label, anchor in CATEGORIES:
+            if known_category == category:
+                return (label, anchor)
+        return (str(category).replace("_", " ").title(), f"cat-{html.escape(str(category))}")
+    labels = {
+        "javascript": ("JavaScript", "type-javascript"),
+        "css": ("CSS", "type-css"),
+        "json": ("JSON / API Responses", "type-json"),
+        "svg": ("SVG", "type-svg"),
+        "image": ("Images", "type-images"),
+        "font": ("Fonts", "type-fonts"),
+        "video": ("Video", "type-video"),
+        "audio": ("Audio", "type-audio"),
+        "pdf": ("PDFs", "type-pdf"),
+        "document": ("Documents / Text", "type-documents"),
+        "other-file": ("Other Files", "type-other-files"),
+        "page": ("Pages / No Extension", "type-pages"),
+    }
+    return labels.get(record_type(record), ("Uncategorized", "uncat"))
+
+
+def render_record(record: dict[str, Any], asset_prefix: str = "", source_base: Path | None = None) -> str:
     title = html.escape(record.get("title") or "Unknown")
     url = html.escape(record.get("url") or "")
     resolved = html.escape(record.get("resolved") or "")
@@ -476,6 +763,26 @@ def render_record(record: dict[str, Any], asset_prefix: str = "") -> str:
     if isinstance(headers, dict):
         for key, value in list(headers.items())[:12]:
             header_lines += f"<br><b>{html.escape(str(key))}:</b> {html.escape(str(value))}"
+    labels = record_labels(record)
+    label_attr = html.escape(" ".join(labels + [record.get("url", ""), record.get("title", "")]).lower(), quote=True)
+    type_attr = html.escape(record_type(record), quote=True)
+    image_attr = "yes" if record.get("screenshot") else "no"
+    parsed = urlparse(record.get("url") or "")
+    url_attr = html.escape((record.get("url") or "").lower(), quote=True)
+    title_attr = html.escape((record.get("title") or "").lower(), quote=True)
+    host_attr = html.escape((parsed.hostname or "").lower(), quote=True)
+    path_attr = html.escape(unquote(parsed.path).lower(), quote=True)
+    content_type_attr = html.escape(record_content_type(record), quote=True)
+    content_length_attr = html.escape(record_content_length(record), quote=True)
+    status_attr = html.escape(record_status_bucket(record), quote=True)
+    response_attr = html.escape(record_response_key(record), quote=True)
+    response_body_attr = html.escape(record_body_key(record, source_base), quote=True)
+    url_response_attr = html.escape(record_url_response_key(record), quote=True)
+    search_attr = html.escape(" ".join(labels + [record.get("url", ""), record.get("title", ""), parsed.hostname or "", unquote(parsed.path)]).lower(), quote=True)
+    url_regex = html.escape(generalized_url_regex_token(record), quote=True)
+    response_filter = html.escape(same_response_filter_token(record, source_base), quote=True)
+    visible_labels = [label for label in labels if not label.startswith("response-")]
+    badges = " ".join(f'<span class="badge">{html.escape(label)}</span>' for label in visible_labels)
     screenshot_html = ""
     if screenshot:
         escaped = html.escape(asset_prefix + screenshot, quote=True)
@@ -486,16 +793,24 @@ def render_record(record: dict[str, Any], asset_prefix: str = "") -> str:
     resolved_html = f"<br><b>Resolved to:</b> {resolved}" if resolved and resolved != "Unknown" else ""
     source_html = html_link(source, "Source Code", asset_prefix)
     source_line = f"<br><br>{source_html}" if source_html else ""
+    actions = f"""
+      <div class="row-actions">
+        <button type="button" data-exclude="{url_regex}">Hide URL pattern</button>
+        <button type="button" data-exclude="{response_filter}">Hide same response</button>
+      </div>
+    """
     return f"""
-<tr>
+<tr class="record-row" data-labels="{label_attr}" data-type="{type_attr}" data-image="{image_attr}" data-url="{url_attr}" data-title="{title_attr}" data-host="{host_attr}" data-path="{path_attr}" data-content-type="{content_type_attr}" data-content-length="{content_length_attr}" data-status="{status_attr}" data-response="{response_attr}" data-response-body="{response_body_attr}" data-url-response="{url_response_attr}" data-search="{search_attr}">
   <td>
     <div class="request">
       <a href="{url}" target="_blank">{url}</a>
+      <br><span class="badges">{badges}</span>
       {resolved_html}
       {error_html}
       <br><b>Page Title:</b> {title}
       {header_lines}
       {source_line}
+      {actions}
       <br><span class="muted">Run: {html.escape(record.get("run_id", ""))} / Chunk: {html.escape(record.get("chunk", ""))}</span>
     </div>
   </td>
@@ -512,30 +827,77 @@ def render_report(
     asset_prefix: str = "",
 ) -> Path:
     records = load_manifest(manifest_path)
-    records.sort(key=lambda item: (str(item.get("category")), str(item.get("title")), str(item.get("url"))))
+    records.sort(key=lambda item: (report_section(item)[0], str(item.get("title")), str(item.get("url"))))
     errors = [item for item in records if item.get("error")]
-    non_errors = [item for item in records if not item.get("error")]
+    source_base = (report_dir / asset_prefix).resolve()
 
     sections: list[tuple[str, str, list[dict[str, Any]]]] = []
-    for category, label, anchor in CATEGORIES:
-        group = [item for item in non_errors if item.get("category") == category]
-        if group:
-            sections.append((label, anchor, group))
-    if errors:
-        sections.append(("Errors", "errors", errors))
+    section_map: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for record in records:
+        label, anchor = report_section(record)
+        section_map.setdefault((label, anchor), []).append(record)
+    preferred_order = [
+        "type-pages",
+        "type-javascript",
+        "type-json",
+        "type-css",
+        "type-svg",
+        "type-images",
+        "type-fonts",
+        "type-video",
+        "type-audio",
+        "type-pdf",
+        "type-documents",
+        "type-other-files",
+        "unauth",
+        "notfound",
+        "empty",
+        "errors",
+    ]
+    order_index = {anchor: index for index, anchor in enumerate(preferred_order)}
+    for (label, anchor), group in sorted(
+        section_map.items(),
+        key=lambda item: (order_index.get(item[0][1], 999), item[0][0]),
+    ):
+        sections.append((label, anchor, group))
 
     toc_rows = "\n".join(
         f'<tr><td><a href="#{anchor}">{html.escape(label)}</a></td><td>{len(group)}</td></tr>'
         for label, anchor, group in sections
     )
+    type_counts = Counter(record_type(record) for record in records)
+    no_image_count = sum(1 for record in records if not record.get("screenshot"))
+    filter_buttons = [
+        ("no-image", "No Image", no_image_count),
+        ("errors", "Errors", sum(1 for record in records if "errors" in record_labels(record))),
+        ("javascript", "JavaScript", type_counts.get("javascript", 0)),
+        ("json", "JSON", type_counts.get("json", 0)),
+        ("css", "CSS", type_counts.get("css", 0)),
+        ("svg", "SVG", type_counts.get("svg", 0)),
+        ("image", "Images", type_counts.get("image", 0)),
+        ("font", "Fonts", type_counts.get("font", 0)),
+        ("video", "Video", type_counts.get("video", 0)),
+        ("pdf", "PDF", type_counts.get("pdf", 0)),
+        ("api", "API", sum(1 for record in records if "api" in record_labels(record))),
+        ("unauth", "401/403", sum(1 for record in records if "unauth" in record_labels(record))),
+        ("dagger-url", "Dagger URLs", sum(1 for record in records if "dagger-url" in record_labels(record))),
+        ("design-url", "Design URLs", sum(1 for record in records if "design-url" in record_labels(record))),
+        ("uncategorized", "Uncategorized", sum(1 for record in records if not record.get("category"))),
+    ]
+    filters = "\n".join(
+        f'<label class="filter-check"><input type="checkbox" value="{html.escape(value, quote=True)}"> {html.escape(label)} <span>{count}</span></label>'
+        for value, label, count in filter_buttons
+        if count
+    )
     section_html = []
     for label, anchor, group in sections:
-        section_html.append(f'<h2 id="{anchor}">{html.escape(label)}</h2>')
+        section_html.append(f'<section class="report-section" id="{anchor}"><h2>{html.escape(label)} <span class="section-count">{len(group)}</span></h2>')
         for page_start in range(0, len(group), page_size):
             page = group[page_start : page_start + page_size]
-            section_html.append('<table><tr><th>Web Request Info</th><th>Web Screenshot</th></tr>')
-            section_html.extend(render_record(record, asset_prefix) for record in page)
+            section_html.append('<table class="report-table"><tr><th>Web Request Info</th><th>Web Screenshot</th></tr>')
+            section_html.extend(render_record(record, asset_prefix, source_base) for record in page)
             section_html.append("</table>")
+        section_html.append('<a class="back-top" href="#top">Back to top</a></section>')
 
     report = f"""<!doctype html>
 <html>
@@ -543,7 +905,7 @@ def render_report(
   <meta charset="utf-8">
   <title>{html.escape(title)}</title>
   <style>
-    body {{ font-family: Arial, sans-serif; margin: 24px; color: #222; }}
+    body {{ font-family: Arial, sans-serif; margin: 0; color: #222; }}
     h1 {{ margin-bottom: 0; }}
     h2 {{ margin-top: 36px; border-bottom: 1px solid #ccc; padding-bottom: 6px; }}
     table {{ border-collapse: collapse; width: 100%; margin: 16px 0 28px; }}
@@ -554,15 +916,423 @@ def render_report(
     .shot img {{ max-height: 400px; max-width: 820px; border: 1px solid #ddd; }}
     .muted {{ color: #777; font-size: 12px; }}
     .toc {{ max-width: 720px; }}
+    .layout {{ display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }}
+    .sidebar {{ position: sticky; top: 0; align-self: start; height: 100vh; overflow: auto; border-right: 1px solid #ccc; background: #f7f7f7; padding: 16px; box-sizing: border-box; }}
+    .content {{ padding: 24px; min-width: 0; }}
+    .sidebar h2 {{ margin: 18px 0 8px; border: 0; padding: 0; font-size: 16px; }}
+    .sidebar input[type="search"] {{ width: 100%; box-sizing: border-box; padding: 8px; font-size: 14px; margin: 6px 0 10px; }}
+    details.filter-panel {{ border: 1px solid #ccc; background: #fff; margin: 10px 0; padding: 0; }}
+    details.filter-panel summary {{ cursor: pointer; padding: 9px 10px; font-weight: bold; }}
+    .filter-panel-body {{ border-top: 1px solid #ddd; padding: 10px; }}
+    .custom-filters label {{ display: block; color: #555; font-size: 12px; margin-top: 8px; }}
+    .term-list {{ display: flex; flex-direction: column; gap: 5px; margin: 2px 0 8px; }}
+    .term-chip {{ display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid #bbb; background: #f5f5f5; border-radius: 4px; padding: 4px 6px; font-size: 12px; overflow-wrap: anywhere; }}
+    .term-chip button {{ border: 0; background: transparent; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }}
+    .quick-filters {{ display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 10px; }}
+    .quick-filters button {{ border: 1px solid #aaa; background: #fff; padding: 4px 7px; border-radius: 4px; cursor: pointer; font-size: 12px; }}
+    .help {{ color: #666; font-size: 12px; line-height: 1.35; }}
+    .query-help {{ margin: 8px 0; font-size: 12px; }}
+    .query-help summary {{ cursor: pointer; color: #333; }}
+    .query-help code {{ background: #eee; padding: 1px 3px; }}
+    .filter-check {{ display: block; padding: 5px 0; cursor: pointer; line-height: 1.25; }}
+    .filter-check span {{ color: #666; font-size: 12px; }}
+    .filter-actions, .pager {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }}
+    .filter-actions button, .pager button {{ border: 1px solid #aaa; background: #fff; padding: 6px 9px; border-radius: 4px; cursor: pointer; }}
+    .filter-actions button:hover, .pager button:hover {{ background: #eee; }}
+    .page-size {{ width: 100%; padding: 6px; margin-top: 6px; }}
+    .badge {{ display: inline-block; border: 1px solid #bbb; background: #f5f5f5; border-radius: 3px; padding: 2px 5px; margin: 2px 3px 2px 0; font-size: 11px; color: #333; }}
+    .row-actions {{ display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }}
+    .row-actions button {{ border: 1px solid #aaa; background: #fff; border-radius: 4px; padding: 4px 7px; cursor: pointer; font-size: 12px; }}
+    .row-actions button:hover {{ background: #eee; }}
+    .section-count {{ color: #777; font-size: 14px; font-weight: normal; }}
+    .hidden-by-filter {{ display: none; }}
+    .filter-status {{ color: #555; margin-top: 8px; font-size: 13px; }}
+    .back-top {{ display: inline-block; margin: 0 0 24px; font-size: 13px; }}
+    .top-link {{ display: inline-block; margin-top: 8px; }}
+    .no-results {{ border: 1px dashed #aaa; color: #555; padding: 18px; margin-top: 18px; }}
+    @media (max-width: 900px) {{
+      .layout {{ grid-template-columns: 1fr; }}
+      .sidebar {{ position: relative; height: auto; border-right: 0; border-bottom: 1px solid #ccc; }}
+      .content {{ padding: 16px; }}
+    }}
     @media print {{ a {{ color: #111; }} .shot img {{ max-width: 700px; }} }}
   </style>
 </head>
-<body>
+<body id="top">
+  <div class="layout">
+  <aside class="sidebar">
+    <h2>Search</h2>
+    <input id="searchBox" type="search" placeholder='Search or query: app.flourish -tag:design-url url:/†\\d+$/'>
+    <div class="help">Supports text, <b>-exclude</b>, <b>field:value</b>, <b>reg:</b>, <b>/regex/</b>, and wildcards like <b>*token*</b>.</div>
+    <details class="query-help">
+      <summary>Query help</summary>
+      <div>
+        Text: <code>flourish</code><br>
+        Exclude: <code>-tag:design-url</code><br>
+        Fields: <code>url:</code> <code>host:</code> <code>path:</code> <code>tag:</code> <code>type:</code> <code>response:</code> <code>response-body:</code> <code>url-response:</code> <code>content-type:</code> <code>length:</code> <code>status:</code><br>
+        Regex: <code>url:reg:^https://app\\.flourish\\.studio/api/data_table/\\d+$</code><br>
+        Slash regex: <code>path:/^\\/†\\d+\\/?$/</code>
+      </div>
+    </details>
+    <details id="filterPanel" class="filter-panel">
+    <summary>Filters</summary>
+    <div class="filter-panel-body">
+    <div class="custom-filters">
+      <label for="includeBox">Include terms</label>
+      <input id="includeBox" type="search" placeholder="Type a term, then press Enter">
+      <div id="includeTerms" class="term-list"></div>
+      <label for="excludeBox">Exclude terms</label>
+      <input id="excludeBox" type="search" placeholder="Type a term, then press Enter">
+      <div id="excludeTerms" class="term-list"></div>
+      <div class="quick-filters">
+        <button type="button" data-include="†">Dagger URLs</button>
+        <button type="button" data-exclude="tag:design-url">Hide Designs</button>
+        <button type="button" data-include="no-image">No Image</button>
+        <button type="button" data-exclude="no-image">Hide No Image</button>
+        <button type="button" data-include="errors">Errors</button>
+        <button type="button" data-exclude="404">Hide 404</button>
+      </div>
+      <div class="help">Press Enter to add a term. Regex works as <b>reg:pattern</b> or <b>field:reg:pattern</b>.</div>
+    </div>
+    <div class="filter-actions">
+      <button type="button" id="clearFilters">Clear</button>
+      <button type="button" id="interestingOnly">Interesting preset</button>
+    </div>
+    <div class="checks">{filters}</div>
+    </div>
+    </details>
+    <h2>Page</h2>
+    <select id="pageSize" class="page-size">
+      <option value="25">25 per page</option>
+      <option value="50">50 per page</option>
+      <option value="{page_size}" selected>{page_size} per page</option>
+      <option value="200">200 per page</option>
+      <option value="500">500 per page</option>
+    </select>
+    <div class="pager">
+      <button type="button" id="prevPage">Prev</button>
+      <button type="button" id="nextPage">Next</button>
+    </div>
+    <div id="filterStatus" class="filter-status"></div>
+    <a class="top-link" href="#top">Back to top</a>
+  </aside>
+  <main class="content">
   <h1>{html.escape(title)}</h1>
   <div class="summary">Generated {html.escape(now())}. Total records: {len(records)}. Errors: {len(errors)}.</div>
+  <div id="noResults" class="no-results hidden-by-filter">No records match the current filters.</div>
+  <div class="pager">
+    <button type="button" id="prevPageTop">Prev</button>
+    <button type="button" id="nextPageTop">Next</button>
+  </div>
+  <div id="pageStatus" class="filter-status"></div>
   <h2>Table of Contents</h2>
   <table class="toc"><tr><th>Section</th><th>Count</th></tr>{toc_rows}<tr><th>Total</th><td>{len(records)}</td></tr></table>
   {''.join(section_html)}
+  </main>
+  </div>
+  <script>
+    const searchBox = document.getElementById('searchBox');
+    const includeBox = document.getElementById('includeBox');
+    const excludeBox = document.getElementById('excludeBox');
+    const includeTermsEl = document.getElementById('includeTerms');
+    const excludeTermsEl = document.getElementById('excludeTerms');
+    const rows = Array.from(document.querySelectorAll('.record-row'));
+    const checks = Array.from(document.querySelectorAll('.filter-check input'));
+    const status = document.getElementById('filterStatus');
+    const pageStatus = document.getElementById('pageStatus');
+    const pageSize = document.getElementById('pageSize');
+    const noResults = document.getElementById('noResults');
+    const filterPanel = document.getElementById('filterPanel');
+    const interestingPresetFilters = {json.dumps(INTERESTING_PRESET_FILTERS)};
+    const storageKey = `recon-ry-eye-report:v2:${{location.pathname}}`;
+    const includeTerms = [];
+    const excludeTerms = [];
+    let currentPage = 1;
+
+    function storageAvailable() {{
+      try {{
+        const testKey = `${{storageKey}}:test`;
+        localStorage.setItem(testKey, '1');
+        localStorage.removeItem(testKey);
+        return true;
+      }} catch (error) {{
+        return false;
+      }}
+    }}
+
+    function saveState() {{
+      if (!storageAvailable()) return;
+      const state = {{
+        search: searchBox.value,
+        includeTerms,
+        excludeTerms,
+        checked: selectedFilters(),
+        pageSize: pageSize.value,
+        currentPage,
+        filterPanelOpen: filterPanel.open,
+      }};
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    }}
+
+    function restoreState() {{
+      if (!storageAvailable()) return;
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      try {{
+        const state = JSON.parse(raw);
+        searchBox.value = state.search || '';
+        includeTerms.splice(0, includeTerms.length, ...((state.includeTerms || []).filter(Boolean)));
+        excludeTerms.splice(0, excludeTerms.length, ...((state.excludeTerms || []).filter(Boolean)));
+        const checked = new Set(state.checked || []);
+        checks.forEach(check => check.checked = checked.has(check.value));
+        if (state.pageSize) pageSize.value = state.pageSize;
+        currentPage = Number(state.currentPage) || 1;
+        filterPanel.open = Boolean(state.filterPanelOpen);
+        renderTermList('include');
+        renderTermList('exclude');
+      }} catch (error) {{
+        localStorage.removeItem(storageKey);
+      }}
+    }}
+
+    function selectedFilters() {{
+      return checks.filter(check => check.checked).map(check => check.value);
+    }}
+
+    function normalizeTerm(term) {{
+      if (term === 'dagger') return '†';
+      if (term === 'error') return 'errors';
+      if (term === 'non-404-error') return 'errors';
+      return term;
+    }}
+
+    function rowText(row, field) {{
+      if (field === 'url') return row.dataset.url || '';
+      if (field === 'title') return row.dataset.title || '';
+      if (field === 'host') return row.dataset.host || '';
+      if (field === 'path') return row.dataset.path || '';
+      if (field === 'tag' || field === 'label') return row.dataset.labels || '';
+      if (field === 'type') return row.dataset.type || '';
+      if (field === 'response') return row.dataset.response || '';
+      if (field === 'response-body' || field === 'responsebody' || field === 'body') return row.dataset.responseBody || '';
+      if (field === 'url-response' || field === 'urlresponse') return row.dataset.urlResponse || '';
+      if (field === 'content-type' || field === 'contenttype') return row.dataset.contentType || '';
+      if (field === 'length' || field === 'content-length') return row.dataset.contentLength || '';
+      if (field === 'status' || field === 'status-code' || field === 'statuscode') return row.dataset.status || '';
+      return row.dataset.search || row.dataset.labels || '';
+    }}
+
+    function buildRegex(pattern, flags = '') {{
+      try {{
+        return new RegExp(pattern, flags);
+      }} catch (error) {{
+        return null;
+      }}
+    }}
+
+    function parseRegex(value) {{
+      if (value.startsWith('reg:')) return buildRegex(value.slice(4));
+      const match = value.match(/^\\/(.*)\\/([a-z]*)$/);
+      if (!match) return null;
+      return buildRegex(match[1], match[2]);
+    }}
+
+    function wildcardRegex(value) {{
+      const escaped = value.replace(/[.+?^${{}}()|[\\]\\\\]/g, '\\\\$&').replace(/\\*/g, '.*');
+      return new RegExp(escaped);
+    }}
+
+    function tokenMatcher(rawToken) {{
+      let token = normalizeTerm(rawToken.toLowerCase());
+      let field = 'search';
+      const colon = token.indexOf(':');
+      if (colon > 0) {{
+        field = token.slice(0, colon);
+        token = normalizeTerm(token.slice(colon + 1));
+      }}
+      const regex = parseRegex(token) || (token.includes('*') ? wildcardRegex(token) : null);
+      return row => {{
+        const haystack = rowText(row, field);
+        if (regex) return regex.test(haystack);
+        return haystack.includes(token);
+      }};
+    }}
+
+    function chipMatcher(rawChip) {{
+      const parts = rawChip.split('&&').map(part => part.trim()).filter(Boolean);
+      const matchers = (parts.length ? parts : [rawChip]).map(part => tokenMatcher(part));
+      return row => matchers.every(matches => matches(row));
+    }}
+
+    function parseQuery(value) {{
+      const include = [];
+      const exclude = [];
+      value.trim().toLowerCase().split(/\\s+/).filter(Boolean).forEach(raw => {{
+        if (raw.startsWith('-') && raw.length > 1) {{
+          exclude.push(tokenMatcher(raw.slice(1)));
+        }} else {{
+          include.push(tokenMatcher(raw));
+        }}
+      }});
+      return {{ include, exclude }};
+    }}
+
+    function allTermsMatch(row, terms) {{
+      return terms.every(matches => matches(row));
+    }}
+
+    function noTermsMatch(row, terms) {{
+      return !terms.some(matches => matches(row));
+    }}
+
+    function renderTermList(kind) {{
+      const terms = kind === 'include' ? includeTerms : excludeTerms;
+      const container = kind === 'include' ? includeTermsEl : excludeTermsEl;
+      container.innerHTML = '';
+      terms.forEach((term, index) => {{
+        const chip = document.createElement('span');
+        chip.className = 'term-chip';
+        const text = document.createElement('span');
+        text.textContent = term;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = 'x';
+        remove.setAttribute('aria-label', `Remove ${{term}}`);
+        remove.addEventListener('click', () => {{
+          terms.splice(index, 1);
+          renderTermList(kind);
+          applyFilters(true);
+        }});
+        chip.append(text, remove);
+        container.appendChild(chip);
+      }});
+    }}
+
+    function addTerm(kind, term) {{
+      const normalized = normalizeTerm(term.trim().toLowerCase());
+      if (!normalized) return;
+      const terms = kind === 'include' ? includeTerms : excludeTerms;
+      if (!terms.includes(normalized)) terms.push(normalized);
+      renderTermList(kind);
+      applyFilters(true);
+    }}
+
+    function commitInputTerm(kind, input) {{
+      const value = input.value.trim();
+      if (!value) return;
+      value.split(/\\s+/).filter(Boolean).forEach(term => {{
+        if (kind === 'include' && term.startsWith('-') && term.length > 1) {{
+          addTerm('exclude', term.slice(1));
+        }} else {{
+          addTerm(kind, term);
+        }}
+      }});
+      input.value = '';
+    }}
+
+    function matchesFilter(row, filter) {{
+      if (filter === 'no-image') return row.dataset.image === 'no';
+      return row.dataset.type === filter || row.dataset.labels.includes(filter);
+    }}
+
+    function matchingRows() {{
+      const searchParsed = parseQuery(searchBox.value);
+      const includeMatchers = searchParsed.include.concat(includeTerms.map(term => chipMatcher(term)));
+      const excludeMatchers = searchParsed.exclude.concat(excludeTerms.map(term => chipMatcher(term)));
+      const filters = selectedFilters();
+      return rows.filter(row => {{
+        const matchesIncludes = includeMatchers.length === 0 || allTermsMatch(row, includeMatchers);
+        const matchesExcludes = noTermsMatch(row, excludeMatchers);
+        const matchesChecks = filters.length === 0 || filters.some(filter => matchesFilter(row, filter));
+        return matchesIncludes && matchesExcludes && matchesChecks;
+      }});
+    }}
+
+    function updateSectionVisibility() {{
+      document.querySelectorAll('.report-table').forEach(table => {{
+        const anyVisible = Array.from(table.querySelectorAll('.record-row')).some(row => !row.classList.contains('hidden-by-filter'));
+        table.classList.toggle('hidden-by-filter', !anyVisible);
+      }});
+      document.querySelectorAll('.report-section').forEach(section => {{
+        const anyVisible = Array.from(section.querySelectorAll('.record-row')).some(row => !row.classList.contains('hidden-by-filter'));
+        section.classList.toggle('hidden-by-filter', !anyVisible);
+      }});
+    }}
+
+    function applyFilters(resetPage = true) {{
+      if (resetPage) currentPage = 1;
+      const matched = matchingRows();
+      const size = Number(pageSize.value) || {page_size};
+      const pageCount = Math.max(1, Math.ceil(matched.length / size));
+      currentPage = Math.min(Math.max(1, currentPage), pageCount);
+      const start = (currentPage - 1) * size;
+      const pageRows = new Set(matched.slice(start, start + size));
+      rows.forEach(row => row.classList.toggle('hidden-by-filter', !pageRows.has(row)));
+      updateSectionVisibility();
+      noResults.classList.toggle('hidden-by-filter', matched.length !== 0);
+      status.textContent = `Matched ${{matched.length}} of ${{rows.length}} records`;
+      pageStatus.textContent = `Page ${{currentPage}} of ${{pageCount}} - showing ${{pageRows.size}} records`;
+      saveState();
+    }}
+
+    function changePage(delta) {{
+      currentPage += delta;
+      applyFilters(false);
+      window.scrollTo({{ top: 0, behavior: 'smooth' }});
+    }}
+
+    checks.forEach(check => {{
+      check.addEventListener('change', () => applyFilters(true));
+    }});
+    searchBox.addEventListener('input', applyFilters);
+    includeBox.addEventListener('keydown', event => {{
+      if (event.key === 'Enter') {{
+        event.preventDefault();
+        commitInputTerm('include', includeBox);
+      }}
+    }});
+    excludeBox.addEventListener('keydown', event => {{
+      if (event.key === 'Enter') {{
+        event.preventDefault();
+        commitInputTerm('exclude', excludeBox);
+      }}
+    }});
+    pageSize.addEventListener('change', () => applyFilters(true));
+    filterPanel.addEventListener('toggle', saveState);
+    document.getElementById('prevPage').addEventListener('click', () => changePage(-1));
+    document.getElementById('nextPage').addEventListener('click', () => changePage(1));
+    document.getElementById('prevPageTop').addEventListener('click', () => changePage(-1));
+    document.getElementById('nextPageTop').addEventListener('click', () => changePage(1));
+    document.getElementById('clearFilters').addEventListener('click', () => {{
+      checks.forEach(check => check.checked = false);
+      searchBox.value = '';
+      includeBox.value = '';
+      excludeBox.value = '';
+      includeTerms.splice(0, includeTerms.length);
+      excludeTerms.splice(0, excludeTerms.length);
+      renderTermList('include');
+      renderTermList('exclude');
+      localStorage.removeItem(storageKey);
+      applyFilters(true);
+    }});
+    document.getElementById('interestingOnly').addEventListener('click', () => {{
+      checks.forEach(check => check.checked = interestingPresetFilters.includes(check.value));
+      applyFilters(true);
+    }});
+    document.querySelectorAll('.quick-filters button').forEach(button => {{
+      button.addEventListener('click', () => {{
+        if (button.dataset.include) addTerm('include', button.dataset.include);
+        if (button.dataset.exclude) addTerm('exclude', button.dataset.exclude);
+      }});
+    }});
+    document.querySelectorAll('.row-actions button').forEach(button => {{
+      button.addEventListener('click', () => {{
+        if (button.dataset.exclude) addTerm('exclude', button.dataset.exclude);
+      }});
+    }});
+    restoreState();
+    applyFilters(false);
+  </script>
 </body>
 </html>
 """

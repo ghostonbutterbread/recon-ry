@@ -166,7 +166,11 @@ execute_stage() {
         if [[ -n "$required_files" && "$required_files" != "[]" ]]; then
             local req_file
             req_file="$(echo "$required_files" | awk '{print $1}')"
-            if [[ -f "$temp_dir/$req_file" && -s "$temp_dir/$req_file" ]]; then
+            if [[ "${PROFILE:-}" == "full" && "$stage" == "secret_scan" && "$req_file" == "jsfiles.txt" && -n "${CURRENT_HISTORY_DIR:-}" && -f "$CURRENT_HISTORY_DIR/$req_file" && -s "$CURRENT_HISTORY_DIR/$req_file" ]]; then
+                # Full recon reruns should use this run's JS delta when available.
+                # Standalone `secrets` intentionally scans the project root backlog.
+                input_file="$CURRENT_HISTORY_DIR/$req_file"
+            elif [[ -f "$temp_dir/$req_file" && -s "$temp_dir/$req_file" ]]; then
                 input_file="$temp_dir/$req_file"
             else
                 input_file="$project_dir/$req_file"

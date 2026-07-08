@@ -58,6 +58,49 @@ build_auth_args() {
     esac
 }
 
+resolve_ffuf_wordlist() {
+    local configured="$1"
+    local candidate
+    local candidates=()
+    local project_dir="${PROJECT_DIR:-}"
+    local script_dir="${SCRIPT_DIR:-}"
+
+    if [[ -n "${RECON_RY_FFUF_WORDLIST:-}" ]]; then
+        candidates+=("$RECON_RY_FFUF_WORDLIST")
+    fi
+    if [[ -n "$configured" ]]; then
+        candidates+=("$configured")
+    fi
+
+    candidates+=(
+        "${PROJECT_DIR:-}/wordlists/dirs.txt"
+        "$script_dir/config/wordlists/dirs.lst"
+        "$HOME/wordlists/SecLists/Discovery/Web-Content/DirBuster-2007_directory-list-2.3-medium.txt"
+        "$HOME/wordlists/SecLists/Discovery/Web-Content/raft-small-directories.txt"
+        "$HOME/wordlists/SecLists/Discovery/Web-Content/common.txt"
+        "/usr/share/wordlists/SecLists/Discovery/Web-Content/DirBuster-2007_directory-list-2.3-medium.txt"
+        "/usr/share/wordlists/SecLists/Discovery/Web-Content/raft-small-directories.txt"
+        "/usr/share/wordlists/SecLists/Discovery/Web-Content/common.txt"
+        "/usr/share/seclists/Discovery/Web-Content/raft-small-directories.txt"
+        "/usr/share/seclists/Discovery/Web-Content/common.txt"
+        "/usr/share/wordlists/kali-wordlists/dirbuster/directory-list-2.3-medium.txt"
+        "/usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt"
+    )
+
+    for candidate in "${candidates[@]}"; do
+        candidate="${candidate/#\~/$HOME}"
+        candidate="${candidate//\{\{PROJECT_DIR\}\}/$project_dir}"
+        candidate="${candidate//\{\{RECON_DIR\}\}/$script_dir}"
+        candidate="${candidate//\{\{SCRIPT_DIR\}\}/$script_dir}"
+        if [[ -f "$candidate" && -s "$candidate" ]]; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 redact_command() {
     python3 - "$1" <<'PY'
 import shlex
@@ -219,6 +262,14 @@ execute_tool() {
     if [[ -z "$top_ports" ]]; then
         top_ports="1000"
     fi
+    local ffuf_wordlist
+    ffuf_wordlist=$(get_tool_info "$tool" "wordlist")
+    if [[ "$tool" == "ffuf" ]]; then
+        if ! ffuf_wordlist=$(resolve_ffuf_wordlist "$ffuf_wordlist"); then
+            log_warning "ffuf wordlist not found; set RECON_RY_FFUF_WORDLIST or install SecLists/dirbuster wordlists"
+            return 1
+        fi
+    fi
     local eyewitness_chunk_size
     eyewitness_chunk_size=$(get_tool_info "$tool" "chunk_size")
     if [[ -z "$eyewitness_chunk_size" ]]; then
@@ -265,6 +316,7 @@ execute_tool() {
     command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
     command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
     command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
+    command="${command//\{\{FFUF_WORDLIST\}\}/$ffuf_wordlist}"
     command="${command//\{\{EYEWITNESS_CHUNK_SIZE\}\}/$eyewitness_chunk_size}"
     command="${command//\{\{EYEWITNESS_THREADS\}\}/$eyewitness_threads}"
     command="${command//\{\{EYEWITNESS_TIMEOUT\}\}/$eyewitness_timeout}"
@@ -317,6 +369,7 @@ execute_tool() {
         command="${command//\{\{RECON_DIR\}\}/$SCRIPT_DIR}"
         command="${command//\{\{SCRIPT_DIR\}\}/$SCRIPT_DIR}"
         command="${command//\{\{TOP_PORTS\}\}/$top_ports}"
+        command="${command//\{\{FFUF_WORDLIST\}\}/$ffuf_wordlist}"
         command="${command//\{\{EYEWITNESS_CHUNK_SIZE\}\}/$eyewitness_chunk_size}"
         command="${command//\{\{EYEWITNESS_THREADS\}\}/$eyewitness_threads}"
         command="${command//\{\{EYEWITNESS_TIMEOUT\}\}/$eyewitness_timeout}"

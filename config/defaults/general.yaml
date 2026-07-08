@@ -297,7 +297,8 @@ tools:
   ffuf:
     type: binary
     auth_supported: true
-    command: "ffuf -noninteractive -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2 -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} -o {{OUTPUT}}"
+    command: "ffuf -noninteractive -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w {{FFUF_WORDLIST}}:FUZZ2 -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} -of json -o {{OUTPUT}}"
+    wordlist: "/usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt"
     required_files: [alive.txt]
     outputs: [dirs.txt]
 

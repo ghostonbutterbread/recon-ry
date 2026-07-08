@@ -4,13 +4,13 @@ payloads:
     items:
       default:
         description: Default ffuf directory brute-force
-        command: ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2
-          -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} {{AUTH_ARGS}} -o {{OUTPUT}}
+        command: ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w {{FFUF_WORDLIST}}:FUZZ2
+          -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} {{AUTH_ARGS}} -of json -o {{OUTPUT}}
       dirsearch_like:
         description: Dirsearch-like extensions and wordlist
-        command: ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt:FUZZ2
+        command: ffuf -u FUZZ1/FUZZ2 -w {{INPUT}}:FUZZ1 -w {{FFUF_WORDLIST}}:FUZZ2
           -e php,asp,aspx,jsp,html,zip,jar -mc 200,204,301,302,307,401,403 -rate {{RATE_LIMIT}} {{AUTH_ARGS}}
-          -o {{OUTPUT}}
+          -of json -o {{OUTPUT}}
   assetfinder:
     items:
       default:

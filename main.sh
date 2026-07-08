@@ -271,6 +271,8 @@ Notes:
     - Requires jsfiles.txt for SecretFinder (created during param_discovery)
     - Requires urls.txt for Nuclei scanning
     - TruffleHog scans entire project directory
+    - Standalone secrets scans use root jsfiles.txt for backlog coverage
+    - Full recon secret scans use the current run's JS delta when available
     - All results are saved to secrets.txt
 EOF
 }
@@ -456,6 +458,10 @@ parse_args() {
     if [[ "$COMMAND" == "eye_chunks" ]]; then
         EYE_CHUNKS_ARGS=("$@")
         return
+    fi
+
+    if [[ "$COMMAND" == "secrets" ]]; then
+        PROFILE="secrets"
     fi
 
     # Parse command-specific options

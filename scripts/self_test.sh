@@ -196,6 +196,14 @@ else
     echo "PASS: passive tool did not receive auth args"
 fi
 
+ffuf_wordlist="$(resolve_ffuf_wordlist "")"
+if [[ "$ffuf_wordlist" == "$SCRIPT_DIR/config/wordlists/dirs.lst" && -s "$ffuf_wordlist" ]]; then
+    echo "PASS: ffuf resolves bundled fallback wordlist"
+else
+    echo "FAIL: ffuf fallback wordlist did not resolve"
+    fail=1
+fi
+
 param_auth_args="$(build_auth_args param_recon)"
 if [[ "$param_auth_args" != *"--auth-seed"* || "$param_auth_args" != *"--auth-header"* || "$param_auth_args" != *"--cookie"* ]]; then
     echo "FAIL: param_recon did not receive forwarded auth controls"

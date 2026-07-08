@@ -44,3 +44,5 @@ config/state.yaml
 # Externally cloned tool/wordlist repositories (managed via git pull in updater)
 tools/
 wordlists/
+!config/wordlists/
+!config/wordlists/*.lst

@@ -62,11 +62,32 @@ ls -la ~/bounties/example
 ls -la ~/bounties/example/history
 ```
 
+## Mental Model
+
+`recon` is the main orchestrator. A full recon run builds the project corpus:
+subdomains, URLs, live hosts, parameters, JavaScript, directories, secrets,
+screenshots, enrichment data, and ranked follow-up queues.
+
+The focused commands are not competing entry points. They are replay/deepen
+lanes for data `recon` has already gathered:
+
+- `secrets --project` performs a deeper backlog secret sweep over known project
+  data, especially root `jsfiles.txt`.
+- `recon --dork` or the `dork` profile expands OSINT/dork leads from the same
+  project context.
+- `recon --eye` and `eye_chunks` replay visual reconnaissance over existing
+  URL files or custom inputs.
+- `--dir` reruns the content-discovery lane when directory enumeration needs
+  focused attention.
+
+Use `recon --full` for the normal automated pass. Use lane commands when a
+project already has data and you want to go deeper on one class of artifact.
+
 ## Commands
 
 - `init` - initialize a project directory and generate `rate_limit.conf`
-- `recon` - run reconnaissance profiles/stages
-- `secrets` - run secret-scanning workflow
+- `recon` - run the main reconnaissance orchestrator and selected profiles/stages
+- `secrets` - rerun/deepen secret scanning over existing project data
 - `eye_chunks` - run EyeWitness in recoverable chunks and merge one report
 - `scans` - list/kill background scans (currently used for `dir_enum` background jobs)
 - `enable_tools` - interactive tool toggle menu
@@ -140,6 +161,18 @@ Defined in `config/profiles.yaml`:
 - `fingerprint`: `get_ips`, `port_enrichment`, `http_fingerprinting`, `url_ranking`
 
 EyeWitness stage is forced to run last when present.
+
+### Secret Scan Inputs
+
+Secret scanning uses different JavaScript inputs depending on how it is invoked:
+
+- `recon --full` uses the current run's `history/<date>/jsfiles.txt` delta
+  when that file exists. This keeps full reruns incremental and avoids scanning
+  stale accumulated JavaScript from older runs.
+- `secrets --project` uses root `jsfiles.txt`. This is the backlog mode for
+  intentionally rescanning all known project JavaScript.
+
+Root recon files are cumulative. History files are per-run deltas.
 
 ## Project Structure
 
@@ -320,7 +353,9 @@ Missing config files are restored from `config/defaults/` when possible.
    - ffuf, dirsearch
 
 9. **Secret Scanning** → `secrets.txt`
-   - nuclei, trufflehog
+   - nuclei, trufflehog, SecretFinder
+   - `recon --full` scans the current run's JS delta when available
+   - `secrets --project` scans root `jsfiles.txt` for backlog coverage
 
 10. **URL Ranking** → `review_queue.jsonl`
     - ranked review queue for focused human and agent follow-up
@@ -365,8 +400,8 @@ Missing config files are restored from `config/defaults/` when possible.
 # Incremental EyeWitness report for a large URL list
 ./main.sh eye_chunks --input ~/targets/alive.txt --output ~/bounties/example/eyewitness --chunk-size 4000
 
-# Secrets workflow
-./main.sh secrets --secrets --project ~/bounties/example
+# Secrets workflow. Scans the root JavaScript backlog for this project.
+./main.sh secrets --project ~/bounties/example
 
 # Dry run
 ./main.sh recon --full --project ~/bounties/example --url example.com --dry-run
