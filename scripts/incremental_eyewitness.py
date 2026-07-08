@@ -312,13 +312,24 @@ def copy_artifact(src: str | None, final_dir: Path, subdir: str, chunk_id: str, 
         return None
     target_dir = final_dir / subdir
     target_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = shorten_filename(f"{chunk_id}__{src_path.name}")
-    dest = target_dir / safe_name
-    try:
-        shutil.copy2(src_path, dest)
-    except OSError:
-        return None
-    return str(dest.relative_to(final_dir))
+    artifact_name = f"{chunk_id}__{src_path.name}"
+    seen: set[str] = set()
+    for max_bytes in (MAX_ARTIFACT_FILENAME_BYTES, 200, 160, 120, 80):
+        safe_name = shorten_filename(artifact_name, max_bytes=max_bytes)
+        if safe_name in seen:
+            continue
+        seen.add(safe_name)
+        dest = target_dir / safe_name
+        try:
+            shutil.copy2(src_path, dest)
+            return str(dest.relative_to(final_dir))
+        except OSError:
+            try:
+                dest.unlink(missing_ok=True)
+            except OSError:
+                pass
+            continue
+    return None
 
 
 def stringify(value: Any) -> str:

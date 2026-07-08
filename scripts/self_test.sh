@@ -262,6 +262,61 @@ else
     echo "PASS: passive profile is archive/local only"
 fi
 
+artifact_retry_check="$(python3 - "$SCRIPT_DIR/scripts/incremental_eyewitness.py" <<'PY'
+import importlib.util
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+module_path = sys.argv[1]
+spec = importlib.util.spec_from_file_location("incremental_eyewitness", module_path)
+mod = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = mod
+spec.loader.exec_module(mod)
+
+with tempfile.TemporaryDirectory() as tmp:
+    base = Path(tmp) / "work"
+    final = Path(tmp) / "final"
+    base.mkdir()
+    src = base / ("source-" + "x" * 220 + ".html")
+    src.write_text("artifact", encoding="utf-8")
+    calls = []
+    real_copy2 = shutil.copy2
+
+    def flaky_copy2(source, dest, *args, **kwargs):
+        calls.append(Path(dest).name)
+        if len(calls) == 1:
+            raise OSError("simulated filename failure")
+        return real_copy2(source, dest, *args, **kwargs)
+
+    old_copy2 = mod.shutil.copy2
+    mod.shutil.copy2 = flaky_copy2
+    try:
+        rel = mod.copy_artifact(str(src), final, "source", "run__chunk_0001", base)
+    finally:
+        mod.shutil.copy2 = old_copy2
+
+    copied = final / rel if rel else None
+    if (
+        rel
+        and copied is not None
+        and copied.read_text(encoding="utf-8") == "artifact"
+        and len(calls) >= 2
+        and len(calls[1].encode("utf-8")) < len(calls[0].encode("utf-8"))
+    ):
+        print("ok")
+    else:
+        print("artifact-retry-failed")
+PY
+)"
+if [[ "$artifact_retry_check" != "ok" ]]; then
+    echo "FAIL: EyeWitness artifact retry did not preserve artifact ($artifact_retry_check)"
+    fail=1
+else
+    echo "PASS: EyeWitness artifact copy retries with shorter names"
+fi
+
 if [[ "$fail" -ne 0 ]]; then
     echo ""
     echo "Self-test FAILED"
