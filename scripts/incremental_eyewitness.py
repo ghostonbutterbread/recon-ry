@@ -314,7 +314,10 @@ def copy_artifact(src: str | None, final_dir: Path, subdir: str, chunk_id: str, 
     target_dir.mkdir(parents=True, exist_ok=True)
     safe_name = shorten_filename(f"{chunk_id}__{src_path.name}")
     dest = target_dir / safe_name
-    shutil.copy2(src_path, dest)
+    try:
+        shutil.copy2(src_path, dest)
+    except OSError:
+        return None
     return str(dest.relative_to(final_dir))
 
 
@@ -481,6 +484,25 @@ def run_chunk(chunk: Chunk, args: argparse.Namespace, store_dir: Path, run_dir: 
     chunk.error = f"exit={result.returncode}; report.html missing={not (work_dir / 'report.html').exists()}"
     save_state(state_path, state)
     return False
+
+
+def merge_existing_chunk(chunk: Chunk, args: argparse.Namespace, store_dir: Path, run_dir: Path, state_path: Path, state: RunState) -> bool:
+    work_dir = Path(chunk.work_dir)
+    if not (work_dir / "report.html").exists():
+        return False
+    chunk.finished_at = now()
+    try:
+        count = merge_chunk(chunk, store_dir, run_dir, state.run_id, args.eyewitness)
+    except Exception as exc:
+        chunk.status = "failed"
+        chunk.error = f"merge existing output failed: {exc}"
+        save_state(state_path, state)
+        return False
+    chunk.status = "done"
+    chunk.exit_code = 0
+    chunk.error = None if count else "chunk completed but produced no completed records"
+    save_state(state_path, state)
+    return True
 
 
 def html_link(href: str | None, label: str, asset_prefix: str = "") -> str:
@@ -1413,7 +1435,12 @@ def run(args: argparse.Namespace) -> int:
             continue
         if args.resume and chunk.status == "done" and not args.force:
             continue
-        ok = run_chunk(chunk, args, store_dir, run_dir, state_path, state)
+        if args.resume and chunk.status == "running" and not args.force:
+            ok = merge_existing_chunk(chunk, args, store_dir, run_dir, state_path, state)
+            if not ok:
+                ok = run_chunk(chunk, args, store_dir, run_dir, state_path, state)
+        else:
+            ok = run_chunk(chunk, args, store_dir, run_dir, state_path, state)
         if not ok:
             failed += 1
             if not args.continue_on_fail:
