@@ -46,6 +46,37 @@ stages:
       - waybackurls
       - gau
 
+  exact_url_discovery:
+    parallel: false
+    description: "Crawl and archive discovery constrained to the exact target host"
+    tools:
+      - katana
+      - hakrawler
+      - waybackurls
+      - gau
+
+  exact_alive_check:
+    parallel: false
+    description: "Check exact-host URLs for live HTTP services"
+    tools:
+      - httpx
+
+  exact_http_fingerprinting:
+    enabled: true
+    parallel: false
+    description: "Fingerprint exact-host HTTP services"
+    tools:
+      - http_fingerprinting
+
+  exact_param_discovery:
+    parallel: false
+    description: "Discover parameters and JavaScript on exact-host URLs"
+    tools:
+      - param_recon
+      - uro
+      - js_files
+      - unclutter_jsfiles
+
   passive_url_discovery:
     parallel: false
     description: "Passive URL discovery from archives"

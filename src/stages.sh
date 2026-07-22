@@ -34,6 +34,39 @@ reorder_stages_eyewitness_last() {
     printf '%s\n' "${reordered[*]}"
 }
 
+filter_exact_host_artifacts() {
+    local project_dir="$1"
+    local target_url="$2"
+    local temp_dir="$project_dir/.tmp_run"
+
+    python3 - "$target_url" \
+        "$project_dir/urls.txt" "$temp_dir/urls.txt" \
+        "$project_dir/alive.txt" "$project_dir/params.txt" \
+        "$project_dir/params_raw.txt" "$project_dir/jsfiles.txt" <<'PY'
+from pathlib import Path
+from urllib.parse import urlparse
+import sys
+
+target = urlparse(sys.argv[1] if "://" in sys.argv[1] else f"https://{sys.argv[1]}").hostname
+if not target:
+    raise SystemExit("exact-urls requires a URL with a hostname")
+target = target.lower()
+for raw_path in sys.argv[2:]:
+    path = Path(raw_path)
+    if not path.is_file():
+        continue
+    kept = []
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        value = raw.strip()
+        if not value:
+            continue
+        parsed = urlparse(value if "://" in value else f"//{value}")
+        if parsed.hostname and parsed.hostname.lower() == target:
+            kept.append(raw)
+    path.write_text("\n".join(dict.fromkeys(kept)) + ("\n" if kept else ""), encoding="utf-8")
+PY
+}
+
 # Check if stage dependencies are met
 check_stage_dependencies() {
     local stage="$1"
@@ -156,7 +189,7 @@ execute_stage() {
         if [[ "$primary_output" == "wild.txt" || "$primary_output" == "urls.txt" ]]; then
             output_file="$temp_dir/$primary_output"
         fi
-        if [[ "$stage" == "passive_url_discovery" && "$primary_output" == "urls.txt" ]]; then
+        if [[ "$stage" == "passive_url_discovery" || "$stage" == "exact_url_discovery" ]] && [[ "$primary_output" == "urls.txt" ]]; then
             output_file="$project_dir/$primary_output"
         fi
 
@@ -355,6 +388,11 @@ run_recon_project() {
     if [[ -n "$url" ]]; then
         printf '%s\n' "$url" > "$temp_dir/url_seed.txt"
     fi
+    if [[ "$profile" == "exact-urls" ]]; then
+        # Reuse URL-discovery tools with a transient single-host input. This is
+        # not a wildcard inventory and is never promoted into project wild.txt.
+        printf '%s\n' "$domain" > "$temp_dir/wild.txt"
+    fi
 
     if [[ "$DIR_ONLY" == "true" ]]; then
         log_info "Directory fuzzing only (--dir)"
@@ -405,8 +443,8 @@ run_recon_project() {
             return 130
         fi
 
-        if [[ "$stage" == "alive_check" ]]; then
-            # Ensure wild.txt is merged into urls.txt before httpx
+        if [[ "$stage" == "alive_check" || "$stage" == "exact_alive_check" ]]; then
+            # Ensure discovered exact-host URLs are available to httpx.
             create_global_urls "$project_dir"
         fi
         if [[ "$stage" == "dir_enum" ]]; then
@@ -422,7 +460,11 @@ run_recon_project() {
             log_error "Stage $stage failed"
         fi
 
-        if [[ "$stage" == "alive_check" && "$dir_enum_in_profile" == "true" ]]; then
+        if [[ "$profile" == "exact-urls" ]]; then
+            filter_exact_host_artifacts "$project_dir" "$url"
+        fi
+
+        if [[ "$stage" == "alive_check" || "$stage" == "exact_alive_check" ]] && [[ "$dir_enum_in_profile" == "true" ]]; then
             if is_stage_enabled "dir_enum"; then
                 log_info "Starting directory enumeration in background"
                 local bg_dir="$project_dir/.bg_scans"

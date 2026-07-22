@@ -124,6 +124,7 @@ Options:
     --subs              Subdomain enumeration only
     --fast              Quick scan (subdomain + alive check)
     --urls              URL discovery and alive check (requires wild.txt)
+    --exact-urls        Full web recon limited to the exact --url host
     --passive           Passive archive URL and parameter discovery only
     --params            Parameter discovery (param_recon)
     --dork              Google dorking only
@@ -146,6 +147,7 @@ Profiles:
     subs                Subdomain enumeration only
     fast                Quick scan (subdomain + alive check)
     urls                URL discovery and alive check
+    exact-urls          Full web recon limited to one exact URL host
     passive             Passive archive URL and parameter discovery
     params              Parameter discovery (param_recon)
     secrets             Secret scanning on existing data
@@ -489,6 +491,10 @@ parse_args() {
                 ;;
             --urls)
                 PROFILE="urls"
+                shift
+                ;;
+            --exact-urls)
+                PROFILE="exact-urls"
                 shift
                 ;;
             --passive)

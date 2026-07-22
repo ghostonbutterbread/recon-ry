@@ -17,6 +17,18 @@ profiles:
       - url_ranking
       - eyewitness
 
+  exact-urls:
+    description: "Full web reconnaissance limited to one exact URL host"
+    stages:
+      - exact_url_discovery
+      - exact_alive_check
+      - exact_http_fingerprinting
+      - exact_param_discovery
+      - dir_enum
+      - secret_scan
+      - url_ranking
+      - eyewitness
+
   subs:
     description: "Subdomain enumeration only"
     stages:
