@@ -29,6 +29,17 @@ profiles:
       - url_ranking
       - eyewitness
 
+  exact-urls-header:
+    description: "Exact-host web reconnaissance using only target-request tools with header forwarding"
+    stages:
+      - exact_url_discovery_header
+      - exact_alive_check
+      - exact_http_fingerprinting
+      - exact_param_discovery
+      - dir_enum
+      - exact_secret_scan_header
+      - exact_url_ranking
+
   subs:
     description: "Subdomain enumeration only"
     stages:

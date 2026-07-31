@@ -229,6 +229,34 @@ else
     echo "PASS: auth redaction hides secret values"
 fi
 
+header_profile_check="$(python3 - "$SCRIPT_DIR/config/profiles.yaml" "$SCRIPT_DIR/config/general.yaml" <<'PY'
+import sys, yaml
+
+profiles = yaml.safe_load(open(sys.argv[1], encoding="utf-8"))["profiles"]
+general = yaml.safe_load(open(sys.argv[2], encoding="utf-8"))
+expected_stages = [
+    "exact_url_discovery_header",
+    "exact_alive_check",
+    "exact_http_fingerprinting",
+    "exact_param_discovery",
+    "dir_enum",
+    "exact_secret_scan_header",
+    "exact_url_ranking",
+]
+profile = profiles.get("exact-urls-header", {})
+stages = profile.get("stages", [])
+header_discovery = general.get("stages", {}).get("exact_url_discovery_header", {}).get("tools", [])
+header_secrets = general.get("stages", {}).get("exact_secret_scan_header", {}).get("tools", [])
+print("ok" if stages == expected_stages and header_discovery == ["exact_katana"] and header_secrets == ["nuclei"] else "bad")
+PY
+)"
+if [[ "$header_profile_check" == "ok" ]]; then
+    echo "PASS: exact header profile excludes unsupported target-request tools"
+else
+    echo "FAIL: exact header profile missing or includes unsupported target-request tools"
+    fail=1
+fi
+
 passive_profile_check="$(python3 - "$SCRIPT_DIR/config/profiles.yaml" "$SCRIPT_DIR/config/general.yaml" <<'PY'
 import sys, yaml
 

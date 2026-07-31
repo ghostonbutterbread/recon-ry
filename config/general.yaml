@@ -55,6 +55,24 @@ stages:
       - waybackurls
       - gau
 
+  exact_url_discovery_header:
+    parallel: false
+    description: "Exact-host crawling with verified request-header forwarding"
+    tools:
+      - exact_katana
+
+  exact_secret_scan_header:
+    parallel: false
+    description: "Exact-host secret scanning with verified request-header forwarding"
+    tools:
+      - nuclei
+
+  exact_url_ranking:
+    parallel: false
+    description: "Rank exact-host URLs for focused manual and agent review"
+    tools:
+      - url_ranking
+
   exact_alive_check:
     parallel: false
     description: "Check exact-host URLs for live HTTP services"
@@ -210,6 +228,13 @@ tools:
     auth_supported: true
     command: "katana -list {{INPUT}} -d 3 -silent -jc -kf all -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
     required_files: [wild.txt]
+    outputs: [urls.txt]
+
+  exact_katana:
+    type: binary
+    auth_supported: true
+    command: "katana -list {{INPUT}} -d 3 -silent -jc -kf all -rl {{RATE_LIMIT}} -o {{OUTPUT}}"
+    required_files: [urls.txt]
     outputs: [urls.txt]
 
   hakrawler:
