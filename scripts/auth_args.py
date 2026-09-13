@@ -99,7 +99,7 @@ def collect_headers(
 
 
 def flag_for_tool(tool: str) -> str:
-    return "--auth-header" if tool in {"http_fingerprinting", "param_recon"} else "-H"
+    return "--header" if tool in {"http_fingerprinting", "param_recon"} else "-H"
 
 
 def shell_header_flags(headers: list[str]) -> str:
@@ -183,7 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seed-file", default="")
     parser.add_argument("--seed", default="")
     parser.add_argument("--auth-host", default="")
-    parser.add_argument("--auth-header", action="append", default=[])
+    parser.add_argument("--header", "--auth-header", dest="header", action="append", default=[])
     parser.add_argument("--cookie", action="append", default=[])
     parser.add_argument("--format", choices=("shell-header-flags", "json"), default="shell-header-flags")
 
@@ -192,7 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
     render.add_argument("--seed", default="")
     render.add_argument("--tool", required=True)
     render.add_argument("--auth-host", default="")
-    render.add_argument("--auth-header", action="append", default=[])
+    render.add_argument("--header", "--auth-header", dest="header", action="append", default=[])
     render.add_argument("--cookie", action="append", default=[])
     render.add_argument("--redacted", action="store_true")
 
@@ -203,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     redact.add_argument("--seed", default="")
     redact.add_argument("--text", required=True)
     redact.add_argument("--auth-host", default="")
-    redact.add_argument("--auth-header", action="append", default=[])
+    redact.add_argument("--header", "--auth-header", dest="header", action="append", default=[])
     redact.add_argument("--cookie", action="append", default=[])
     return parser
 
@@ -216,7 +216,7 @@ def main() -> int:
                 tool=args.tool,
                 seed_file=args.seed,
                 auth_host=args.auth_host,
-                cli_headers=args.auth_header,
+                cli_headers=args.header,
                 cli_cookies=args.cookie,
                 redacted=args.redacted,
             )
@@ -231,7 +231,7 @@ def main() -> int:
                 text=args.text,
                 seed_file=args.seed,
                 auth_host=args.auth_host,
-                cli_headers=args.auth_header,
+                cli_headers=args.header,
                 cli_cookies=args.cookie,
             )
         )
@@ -240,7 +240,7 @@ def main() -> int:
     headers = collect_headers(
         seed_file=args.seed_file or args.seed,
         auth_host=args.auth_host,
-        cli_headers=args.auth_header,
+        cli_headers=args.header,
         cli_cookies=args.cookie,
     )
     if args.format == "json":

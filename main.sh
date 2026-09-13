@@ -134,7 +134,8 @@ Options:
     --url <url>         Target URL/domain to scan
     --timeout <secs>    Kill each tool after this many seconds (0 = no timeout, omit = config default)
     --auth-seed <file>  Owner-only JSON auth seed for supported active HTTP tools
-    --auth-header <h>   Header for supported active HTTP tools; repeatable
+    --header <h>        Header for supported active HTTP tools; repeatable
+    --auth-header <h>   Deprecated alias for --header
     --cookie <value>    Cookie header value for supported active HTTP tools; repeatable
     -v                  Verbose output (show tool names)
     -vv                 Very verbose (show full tool output)
@@ -243,7 +244,8 @@ Options:
     -vv                 Very verbose (show full tool output)
     --dry-run           Show what would be executed without running
     --auth-seed <file>  Owner-only JSON auth seed for supported active HTTP tools
-    --auth-header <h>   Header for supported active HTTP tools; repeatable
+    --header <h>        Header for supported active HTTP tools; repeatable
+    --auth-header <h>   Deprecated alias for --header
     --cookie <value>    Cookie header value for supported active HTTP tools; repeatable
     --update            Update tools before running
     -h, --help          Show this help message
@@ -550,7 +552,7 @@ parse_args() {
                 export RECON_RY_AUTH_SEED
                 shift 2
                 ;;
-            --auth-header)
+            --header|--auth-header)
                 AUTH_HEADERS+=("$2")
                 shift 2
                 ;;

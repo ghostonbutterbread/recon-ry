@@ -113,7 +113,8 @@ Run help:
 - `--url <url-or-domain>`
 - `--timeout <secs>` (`0` disables timeout)
 - `--auth-seed <file>` (owner-only JSON auth seed for supported active HTTP tools)
-- `--auth-header <header>` (repeatable manual header for supported active HTTP tools)
+- `--header <header>` (repeatable header for supported active HTTP tools; authentication headers are supported)
+- `--auth-header <header>` (deprecated compatibility alias for `--header`)
 - `--cookie <value>` (repeatable manual cookie header value for supported active HTTP tools)
 - `--dry-run`
 - `-v`, `-vv`
@@ -138,13 +139,14 @@ For one-off approved tests, headers and cookies can be passed manually:
 
 ```bash
 ./main.sh recon --url https://example.com --project ~/bounties/example --params \
-  --auth-header 'Authorization: Bearer REDACTED' \
+  --header 'Authorization: Bearer ***' \
+  --header 'X-Program-Researcher: handle' \
   --cookie 'sid=REDACTED'
 ```
 
 When `RECON_RY_AUTH_HOST` is set, cookie entries from an auth seed are filtered
 to that host/domain before being handed to supported tools. Debug logging
-redacts `-H`, `--auth-header`, and `--cookie` values.
+redacts `-H`, `--header`, `--auth-header`, and `--cookie` values.
 
 ## Built-in Profiles
 

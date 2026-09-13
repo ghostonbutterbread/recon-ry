@@ -30,7 +30,7 @@ build_auth_args() {
             fi
             local header
             for header in "${AUTH_HEADERS[@]}"; do
-                printf ' --auth-header %q' "$header"
+                printf ' --header %q' "$header"
             done
             local cookie
             for cookie in "${AUTH_COOKIES[@]}"; do
@@ -47,7 +47,7 @@ build_auth_args() {
             fi
             local header
             for header in "${AUTH_HEADERS[@]}"; do
-                auth_cmd+=(--auth-header "$header")
+                auth_cmd+=(--header "$header")
             done
             local cookie
             for cookie in "${AUTH_COOKIES[@]}"; do
@@ -120,7 +120,7 @@ for idx, part in enumerate(parts):
         skip_next = False
         continue
     redacted.append(part)
-    if part in {"-H", "--auth-header", "--cookie"} and idx + 1 < len(parts):
+    if part in {"-H", "--header", "--auth-header", "--cookie"} and idx + 1 < len(parts):
         value = parts[idx + 1]
         if ":" in value:
             name = value.split(":", 1)[0].strip()

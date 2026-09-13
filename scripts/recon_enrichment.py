@@ -242,7 +242,7 @@ def auth_headers(args: argparse.Namespace) -> list[str]:
     return collect_headers(
         seed_file=getattr(args, "auth_seed", ""),
         auth_host=getattr(args, "auth_host", ""),
-        cli_headers=getattr(args, "auth_header", None) or [],
+        cli_headers=getattr(args, "header", None) or [],
         cli_cookies=getattr(args, "cookie", None) or [],
     )
 
@@ -489,7 +489,7 @@ def build_parser() -> argparse.ArgumentParser:
     httpx.add_argument("--rate-limit", default="")
     httpx.add_argument("--auth-seed", default="")
     httpx.add_argument("--auth-host", default="")
-    httpx.add_argument("--auth-header", action="append", default=[])
+    httpx.add_argument("--header", "--auth-header", dest="header", action="append", default=[])
     httpx.add_argument("--cookie", action="append", default=[])
     httpx.set_defaults(func=cmd_run_httpx)
 

@@ -67,7 +67,8 @@ Usage: $0 [options]
   -d  <depth>   Katana crawl depth (default: 5)
   --auth-seed <file>  Owner-only JSON auth seed for supported active HTTP tools
   --auth-host <host>  Host used to select matching cookies from the auth seed
-  --auth-header <h>   Header for supported active HTTP tools; repeatable
+  --header <h>        Header for supported active HTTP tools; repeatable
+  --auth-header <h>   Deprecated alias for --header
   --cookie <value>    Cookie header value for supported active HTTP tools; repeatable
 
   --passive-only       Only run waybackurls + waymore
@@ -100,7 +101,7 @@ while [[ $# -gt 0 ]]; do
         -d) KATANA_DEPTH="$2"; shift 2 ;;
         --auth-seed) AUTH_SEED_FILE="$2"; shift 2 ;;
         --auth-host) AUTH_HOST="$2"; shift 2 ;;
-        --auth-header) AUTH_HEADERS+=("$2"); shift 2 ;;
+        --header|--auth-header) AUTH_HEADERS+=("$2"); shift 2 ;;
         --cookie) AUTH_COOKIES+=("$2"); shift 2 ;;
         --passive-only) PASSIVE_ONLY=1; shift ;;
         --active-only) ACTIVE_ONLY=1; shift ;;
@@ -137,7 +138,7 @@ build_auth_args() {
     fi
     local header
     for header in "${AUTH_HEADERS[@]}"; do
-        auth_cmd+=(--auth-header "$header")
+        auth_cmd+=(--header "$header")
     done
     local cookie
     for cookie in "${AUTH_COOKIES[@]}"; do

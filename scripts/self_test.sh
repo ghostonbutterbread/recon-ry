@@ -206,11 +206,29 @@ else
 fi
 
 param_auth_args="$(build_auth_args param_recon)"
-if [[ "$param_auth_args" != *"--auth-seed"* || "$param_auth_args" != *"--auth-header"* || "$param_auth_args" != *"--cookie"* ]]; then
+if [[ "$param_auth_args" != *"--auth-seed"* || "$param_auth_args" != *"--header"* || "$param_auth_args" != *"--cookie"* ]]; then
     echo "FAIL: param_recon did not receive forwarded auth controls"
     fail=1
 else
     echo "PASS: param_recon receives forwarded auth controls"
+fi
+
+for header_tool in katana httpx ffuf nuclei; do
+    tool_header_args="$(build_auth_args "$header_tool")"
+    if [[ "$tool_header_args" != *"Authorization:"* || "$tool_header_args" != *"X-CSRF-Token:"* || "$tool_header_args" != *"Cookie:"* ]]; then
+        echo "FAIL: $header_tool did not receive all authentication and custom headers"
+        fail=1
+    else
+        echo "PASS: $header_tool receives authentication and custom headers"
+    fi
+done
+
+header_aliases="$(python3 "$SCRIPT_DIR/scripts/auth_args.py" --format json --header 'Authorization: Bearer NEW' --auth-header 'X-Legacy: yes')"
+if [[ "$header_aliases" != *'Authorization: Bearer NEW'* || "$header_aliases" != *'X-Legacy: yes'* ]]; then
+    echo "FAIL: --header and --auth-header aliases were not both accepted"
+    fail=1
+else
+    echo "PASS: --header and legacy --auth-header are both accepted"
 fi
 
 param_command="$(get_tool_info param_recon command)"
